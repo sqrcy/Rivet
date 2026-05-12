@@ -1,0 +1,9 @@
+[package]
+name = "sqrcy/rivet"
+description = "Rivet is an all-in-one game framework"
+version = "0.1.0"
+license = "MIT"
+registry = "https://github.com/UpliftGames/wally-index"
+realm = "shared"
+
+[dependencies]
