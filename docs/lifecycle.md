@@ -1,29 +1,57 @@
 # Lifecycle
 
-Rivet v1.0 has three lifecycle moments: prepare, `Init`, and `Start`.
+Rivet gives every managed Unit a simple lifecycle:
 
-v1.0 does **not** include generated types or a state system.
+1. prepare
+2. `Init`
+3. `Start`
+4. `Destroy`
 
-## Boot
+## Prepare
 
-1. Rivet loads Unit ModuleScripts under configured roots.
-2. Rivet validates ids, dependencies, and lifecycle methods.
-3. Rivet sorts Units so dependencies boot before dependents.
-4. Rivet attaches runtime fields, including `self.Clean` and `self:Get`.
-5. Rivet runs every `Init`.
-6. Rivet runs every `Start`.
+Prepare is Rivet's internal setup step. This is when Rivet attaches fields like
+`self.Clean` and `self:Get`.
 
-All `Init` methods finish before any `Start` method runs.
+You do not write a prepare method.
+
+## Init
+
+Use `Init` to connect dependencies and set up internal state.
+
+```lua
+function Inventory:Init()
+	self.Data = self:Get("Data")
+	self.Items = {}
+end
+```
+
+`Init` is the best place to read other Units because dependencies are already
+prepared.
+
+## Start
+
+Use `Start` when the Unit is ready to do work.
+
+```lua
+function Inventory:Start()
+	print("Inventory started")
+end
+```
+
+Rivet waits until every Unit has finished `Init` before it calls any `Start`
+method.
 
 ## Destroy
 
-`Rivet.Destroy()` runs Units in reverse boot order.
+Use `Destroy` for custom shutdown behavior.
 
-For each Unit:
+```lua
+function Inventory:Destroy()
+	print("Inventory stopping")
+end
+```
 
-1. Call optional `Destroy`.
-2. Run `self.Clean:Cleanup()`.
+After `Destroy`, Rivet also cleans `self.Clean`.
 
-Calling `Rivet.Destroy()` when Rivet has not started is safe.
-
-Calling `Rivet.Start` twice without destroying the current runtime errors.
+Previous: [Dependencies](dependencies.md)  
+Next: [Clean](clean.md)

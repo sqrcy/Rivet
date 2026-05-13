@@ -1,8 +1,11 @@
 # Clean
 
-`Rivet.Clean` is a small cleanup utility included with the runtime.
+`Clean` is Rivet's small built-in cleanup helper.
 
-v1.0 does **not** include generated types or a state system.
+Every Unit receives `self.Clean`. Add anything that should be cleaned when the
+Unit is destroyed.
+
+## Add a Function
 
 ```lua
 function Session:Init()
@@ -12,13 +15,48 @@ function Session:Init()
 end
 ```
 
-Supported tasks:
+## Add Roblox Objects
+
+`Clean` understands common Roblox cleanup shapes:
 
 - functions
-- Roblox Instances
+- Instances
 - RBXScriptConnections
-- tables with `Destroy`, `Disconnect`, or `Cleanup`
-- explicit method overrides
+- tables with `Destroy`
+- tables with `Disconnect`
+- tables with `Cleanup`
 
-`Rivet.Destroy()` calls each Unit's optional `Destroy` method first, then runs
-`self.Clean:Cleanup()` in reverse boot order.
+```lua
+function Session:Init()
+	local connection = Players.PlayerRemoving:Connect(function(player)
+		print(player.Name, "left")
+	end)
+
+	self.Clean:Add(connection)
+end
+```
+
+## Remove a Task
+
+Use `Remove` when you want to stop tracking something without cleaning it.
+
+```lua
+self.Clean:Remove(connection)
+```
+
+## Manual Cleanup
+
+You can call cleanup yourself:
+
+```lua
+self.Clean:Cleanup()
+```
+
+`Destroy` is an alias:
+
+```lua
+self.Clean:Destroy()
+```
+
+Previous: [Lifecycle](lifecycle.md)  
+Next: [Surfaces](surfaces.md)

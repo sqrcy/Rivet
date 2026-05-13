@@ -1,17 +1,32 @@
 # Plugins
 
-Rivet v1.0 supports optional plugins registered before startup. v1.0 does
-**not** include generated types or state systems.
+Plugins are optional hooks into Rivet's runtime.
+
+Most games can start without plugins. Use them when you want to observe or
+extend Rivet behavior in one place, such as logging Unit startup or watching
+network calls.
+
+## Create a Plugin
 
 ```lua
 local LogPlugin = {}
+
 LogPlugin.Id = "LogPlugin"
 
 function LogPlugin:OnUnitStart(unit)
 	print("Started", unit.Id)
 end
 
+return LogPlugin
+```
+
+## Register It Before Startup
+
+```lua
+local LogPlugin = require(script.LogPlugin)
+
 Rivet.Use(LogPlugin)
+
 Rivet.Start({
 	Roots = {
 		ReplicatedStorage.Units,
@@ -19,7 +34,10 @@ Rivet.Start({
 })
 ```
 
-Supported hooks:
+Plugin ids must be unique. If a hook errors, Rivet includes the plugin id and
+hook name in the error message.
+
+## Common Hooks
 
 - `Init(rivet)`
 - `Start(rivet)`
@@ -32,4 +50,5 @@ Supported hooks:
 - `OnNetworkError(context)`
 - `OnDestroy()`
 
-Plugin ids must be unique. Hook failures include the plugin id and hook name.
+Previous: [Codecs](codecs.md)  
+Next: [Errors](errors.md)

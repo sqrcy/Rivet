@@ -1,23 +1,27 @@
 # Testing
 
-Rivet uses local static checks plus Roblox Open Cloud Luau Execution for engine
-tests.
+Rivet has two kinds of checks:
 
-v1.0 does **not** include generated types or a state system.
+- local checks that catch formatting, lint, type, and build problems
+- Roblox engine tests that run the TestEZ suite in a real DataModel
 
-Local checks:
+## Local Checks
+
+Run these before publishing:
 
 ```sh
 wally install
 rojo sourcemap test.project.json --output sourcemap.json
-luau-lsp analyze --platform=roblox --sourcemap=sourcemap.json --definitions=dev-types/roblox.d.luau src tests examples
-selene src tests examples
-stylua --check src tests examples
+luau-lsp analyze --platform=roblox --sourcemap=sourcemap.json --definitions=dev-types/roblox.d.luau src tests examples benchmarks
+selene src tests examples benchmarks
+stylua --check src tests examples benchmarks
 rojo build test.project.json --output tmp/rivet-tests.rbxlx
 wally package --list
 ```
 
-Engine tests:
+## Roblox Engine Tests
+
+Run:
 
 ```sh
 scripts/test-cloud.sh
@@ -25,3 +29,6 @@ scripts/test-cloud.sh
 
 The cloud runner uploads the latest test place, runs `tests/RunTests.luau`, and
 fails the command if any TestEZ spec fails.
+
+Previous: [Packaging](packaging.md)  
+Next: [Cloud Testing](cloud-testing.md)

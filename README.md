@@ -1,13 +1,8 @@
 # Rivet
 
-Rivet is an all-in-one Roblox/Luau framework package authored by @sqrcy.
-
-This repository currently implements **Rivet v1.0**: managed Units,
-dependencies, dependency-sorted lifecycle, cleanup, explicit Surfaces, basic
-Query/Action/Signal networking, optional runtime contracts, network debug
-stats, explicit codecs, object encode/decode, plugin hooks, and runtime lookup.
-
-v1.0 does **not** include generated types or a state system.
+Rivet is an all-in-one Roblox/Luau framework package by `@sqrcy`. It lets you
+write ordinary ModuleScripts, then adds startup order, cleanup, explicit public
+surfaces, networking, contracts, codecs, and plugins around them.
 
 ## Install
 
@@ -16,7 +11,13 @@ v1.0 does **not** include generated types or a state system.
 Rivet = "sqrcy/rivet@1.0.0"
 ```
 
-## Unit Example
+## Feature Highlights
+
+### Ordinary Units
+
+Rivet Units are just Lua tables returned from ModuleScripts. Add an `Id`,
+optional `Dependencies`, and lifecycle methods when you want Rivet to manage
+startup and shutdown.
 
 ```lua
 --!strict
@@ -30,88 +31,56 @@ function Inventory:Init()
 	self.Data = self:Get("Data")
 end
 
-function Inventory:Start()
-end
+return Inventory
+```
 
+### Explicit Surfaces
+
+Surfaces describe the methods a Unit chooses to expose. Query, Action, and
+Signal surfaces become predictable Roblox remotes without exposing the rest of
+the Unit.
+
+```lua
 Inventory.Surfaces = {
 	Client = {
-		GetItems = {
-			Kind = "Query",
-			Returns = "table",
-		},
+		GetItems = "Query",
+		EquipItem = "Action",
+		ItemAdded = "Signal",
+	},
+}
+```
+
+### Safer Runtime Boundaries
+
+Contracts validate common runtime values, codecs move custom objects across
+network calls, and `Clean` gives each Unit a small built-in cleanup utility.
+
+```lua
+Inventory.Surfaces = {
+	Client = {
 		EquipItem = {
 			Kind = "Action",
 			Args = { "string" },
 		},
-		ItemAdded = {
-			Kind = "Signal",
-			Payload = { "string" },
-		},
 	},
 }
-
-return Inventory
 ```
 
-## Boot Example
+## Package
 
-```lua
---!strict
+Rivet is a Wally package named `sqrcy/rivet`. The plain package contains the
+runtime source, package metadata, project mapping, changelog, readme, and
+BSD-3-Clause license. Tests, examples, scripts, docs, and local tooling files are
+excluded from the published package.
 
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local Rivet = require(ReplicatedStorage.Packages.Rivet)
-
-Rivet.Start({
-	Roots = {
-		ReplicatedStorage.Units,
-	},
-})
-
-local Inventory = Rivet:Get("Inventory")
-```
-
-## Public API
-
-- `Rivet.Start(config)` starts the framework.
-- `Rivet.Get(id)` and `Rivet:Get(id)` return a started Unit.
-- `Rivet.Destroy()` destroys Units in reverse boot order.
-- `Rivet.Clean.new()` creates a cleanup utility.
-- `Rivet.Codec:Register(id, codec)` registers object codecs for custom
-  contracts.
-- `Rivet.Use(plugin)` registers optional plugins before startup.
-- `Rivet.Debug:GetNetworkStats()` returns network counters when enabled.
-
-## Testing
-
-Local checks use Wally, Rojo, luau-lsp, Selene, and StyLua.
-
-Roblox engine tests run headlessly through Open Cloud Luau Execution:
-
-```sh
-scripts/test-cloud.sh
-```
-
-Use a dedicated disposable test universe/place. The command uploads the latest
-test place, runs `tests/RunTests.luau`, prints TestEZ logs, and exits non-zero
-on failure. See [Cloud Testing](docs/cloud-testing.md).
-
-## Documentation
-
-- [Getting Started](docs/getting-started.md)
-- [Units](docs/units.md)
-- [Dependencies](docs/dependencies.md)
-- [Lifecycle](docs/lifecycle.md)
-- [Clean](docs/clean.md)
-- [Surfaces](docs/surfaces.md)
-- [Networking](docs/networking.md)
-- [Contracts](docs/contracts.md)
-- [Codecs](docs/codecs.md)
-- [Plugins](docs/plugins.md)
-- [Errors](docs/errors.md)
-- [Testing](docs/testing.md)
-- [Benchmarks](docs/benchmarks.md)
-- [Versioning](docs/versioning.md)
+See [Packaging](docs/packaging.md) for the exact publish flow and package file
+list.
 
 ## License
 
 Rivet is licensed under BSD-3-Clause.
+
+## Documentation
+
+Start with [Docs Index](docs/index.md), then use [API Reference](docs/api-reference.md)
+once you know the main ideas.

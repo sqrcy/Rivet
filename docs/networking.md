@@ -1,39 +1,83 @@
 # Networking
 
-Rivet v1.0 includes basic Client surface networking. v1.0 does **not** include
-codecs, plugins, generated types, or state systems.
+Rivet turns declared Client surfaces into Roblox remotes.
 
-On the server, declared Client surfaces create remotes under
-`ReplicatedStorage.RivetRemotes`. Query and Action calls dispatch only to
-declared Unit methods. Query and Action server methods receive the requesting
-`Player` as the first argument after `self`.
+The important rule is simple: only declared surfaces are reachable from the
+client. Other Unit methods stay private to the server.
+
+## Query
+
+A Query asks the server for a value.
 
 ```lua
+Inventory.Surfaces = {
+	Client = {
+		GetItems = "Query",
+	},
+}
+
 function Inventory:GetItems(player: Player)
-	return {}
+	return { "Sword" }
 end
+```
+
+Client code can call:
+
+```lua
+local Inventory = Rivet.Get("Inventory")
+local items = Inventory:GetItems()
+```
+
+On the server, Rivet passes the requesting `Player` as the first argument after
+`self`.
+
+## Action
+
+An Action tells the server to do something and does not wait for a return value.
+
+```lua
+Inventory.Surfaces = {
+	Client = {
+		EquipItem = "Action",
+	},
+}
 
 function Inventory:EquipItem(player: Player, itemId: string)
+	print(player.Name, "equipped", itemId)
 end
 ```
 
-Signals are fired from the server through `self.Client`.
+Client code can call:
 
 ```lua
-function Inventory:Start()
-	self.Client.ItemAdded:FireAll("Sword")
-end
-```
-
-On the client, `Rivet:Get("Inventory")` returns a proxy exposing only declared
-Client surfaces.
-
-```lua
-local Inventory = Rivet:Get("Inventory")
-
-local items = Inventory:GetItems()
 Inventory:EquipItem("Sword")
+```
+
+## Signal
+
+A Signal lets the server notify clients.
+
+```lua
+Inventory.Surfaces = {
+	Client = {
+		ItemAdded = "Signal",
+	},
+}
+```
+
+Server code can fire:
+
+```lua
+self.Client.ItemAdded:FireAll("Sword")
+```
+
+Client code can listen:
+
+```lua
 Inventory.ItemAdded:Connect(function(itemId: string)
 	print(itemId)
 end)
 ```
+
+Previous: [Surfaces](surfaces.md)  
+Next: [Contracts](contracts.md)

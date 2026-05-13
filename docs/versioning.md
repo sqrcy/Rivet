@@ -1,33 +1,39 @@
 # Versioning
 
-Rivet v1.0 is the first stable API milestone for this package.
+Rivet uses normal semantic versioning.
 
-v1.0 does **not** include generated types or a state system.
+## Patch
 
-Stable public API:
+Use a patch version for fixes that keep the same public API.
 
-- `Rivet.Start(config)`
-- `Rivet.Get(id)` and `Rivet:Get(id)`
-- `Rivet.Destroy()`
-- `Rivet.Use(plugin)`
-- `Rivet.Codec:Register(id, codec)`
-- `Rivet.Clean.new()`
-- `Rivet.Debug:GetNetworkStats()`
+Example:
 
-Stable Unit metadata:
+```text
+1.0.1
+```
 
-- `Unit.Id`
-- `Unit.Dependencies`
-- `Unit.Surfaces`
+## Minor
 
-Stable Unit lifecycle:
+Use a minor version for new features that keep existing projects working.
 
-- `Unit:Init()`
-- `Unit:Start()`
-- `Unit:Destroy()`
+Example:
 
-Stable runtime fields:
+```text
+1.1.0
+```
 
-- `self.Clean`
-- `self:Get(id)`
-- `self.Client` for server-side signal helpers
+## Major
+
+Use a major version when a public API change requires users to update their
+code.
+
+Example:
+
+```text
+2.0.0
+```
+
+Before publishing any version, update `wally.toml` and `CHANGELOG.md`.
+
+Previous: [Release Checklist](release-checklist.md)  
+Next: [Docs Index](index.md)

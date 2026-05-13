@@ -1,31 +1,22 @@
 # Cloud Testing
 
-Rivet uses Roblox Open Cloud Luau Execution for headless Roblox engine tests.
+Rivet uses Roblox Open Cloud Luau Execution for headless Roblox tests.
 
-This replaces Studio/plugin-based runners. The cloud test command uploads the
-latest test place, creates a Luau Execution task, polls completion, prints task
-logs, and exits non-zero when TestEZ fails.
+That means tests run in a real Roblox place without opening Studio.
 
-The cloud suite covers the currently implemented milestone behavior. v1.0 does
-**not** include codecs, plugins, generated types, or state systems.
+## What the Script Does
 
-## Requirements
+`scripts/test-cloud.sh`:
 
-Create a dedicated disposable test universe and place. The script overwrites the
-configured place each run.
+1. installs Wally packages
+2. builds the latest test place from `test.project.json`
+3. uploads that place to the configured Roblox test place
+4. starts a Luau Execution task
+5. runs `tests/RunTests.luau`
+6. prints the TestEZ logs
+7. exits with an error when tests fail
 
-Create an Open Cloud API key scoped to that test universe/place with permission
-to:
-
-- Upload place versions.
-- Create Luau Execution tasks.
-- Read Luau Execution task state and logs.
-
-Depending on the Creator Dashboard permission UI, these may appear as
-`universe-places:write`, `universe.place.luau-execution-session:write`, and
-`universe.place.luau-execution-session:read`.
-
-## Environment
+## Required Environment
 
 Set these variables outside the repo or in a local ignored `.env` file:
 
@@ -34,6 +25,9 @@ export ROBLOX_API_KEY="..."
 export RIVET_TEST_UNIVERSE_ID="..."
 export RIVET_TEST_PLACE_ID="..."
 ```
+
+The Roblox API key needs access to the dedicated test universe/place for place
+upload and Luau Execution task creation/read.
 
 Optional polling controls:
 
@@ -44,20 +38,11 @@ export RIVET_CLOUD_TEST_UPLOAD_RETRIES=3
 export RIVET_CLOUD_TEST_RETRY_DELAY=120
 ```
 
-Do not commit API keys or place credentials. Use `.env.example` as the template.
-
 ## Run
 
 ```sh
 scripts/test-cloud.sh
 ```
 
-The script runs `wally install`, uploads `test.project.json` through
-`rocale-cli`, and runs `tests/RunTests.luau` as the Luau Execution entrypoint.
-If Roblox returns a transient `409 Conflict` while saving the uploaded place,
-the script retries the full cloud run using the configured retry count and
-delay.
-
-`tests/RunTests.luau` remains the single TestEZ runner. If any TestEZ spec
-fails, it raises an error, causing the cloud task and `rocale-cli` command to
-fail.
+Previous: [Testing](testing.md)  
+Next: [Benchmarks](benchmarks.md)

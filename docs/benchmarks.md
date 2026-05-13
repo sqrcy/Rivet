@@ -1,23 +1,22 @@
 # Benchmarks
 
-Rivet v1.0 includes benchmark scaffolds under `benchmarks/`.
+Benchmarks are small scripts that measure one part of Rivet at a time.
 
-v1.0 does **not** include generated types or a state system.
-
-Current benchmark scripts:
+Current benchmark scaffolds:
 
 - `benchmarks/boot.bench.luau`
 - `benchmarks/cleanup.bench.luau`
 - `benchmarks/networking.bench.luau`
 
-Benchmarks should run in a Roblox place so they have the same DataModel and
-engine APIs as normal Rivet code. Treat the results as environment-specific
-measurements, not universal performance claims.
+Run benchmarks in a Roblox place so they use the same engine APIs as normal
+game code.
 
-Report:
+When sharing benchmark results, include:
 
-- machine or cloud environment
-- Roblox execution mode
-- number of Units or calls
-- total elapsed seconds
-- per-call or per-Unit average when useful
+- where it ran
+- how many Units or calls were measured
+- total elapsed time
+- average time per Unit or call when useful
+
+Previous: [Cloud Testing](cloud-testing.md)  
+Next: [Release Checklist](release-checklist.md)

@@ -1,11 +1,26 @@
 # Getting Started
 
-Rivet v1.0 starts a set of Unit ModuleScripts from configured Roblox Instance
-roots, then optionally exposes declared Client surfaces over Roblox remotes.
+Rivet starts with one simple idea: put related game behavior into ModuleScripts,
+then let Rivet start those modules in a predictable order.
 
-v1.0 does **not** include generated types or a state system.
+In Rivet, those managed ModuleScripts are called **Units**.
 
-## Start Rivet
+## 1. Create a Unit Folder
+
+Put your Units in a folder, for example:
+
+```text
+ReplicatedStorage
+  Units
+    Inventory
+    Data
+```
+
+Each Unit is a ModuleScript that returns a table.
+
+## 2. Start Rivet
+
+Require Rivet, then pass the folder to `Rivet.Start`.
 
 ```lua
 --!strict
@@ -20,39 +35,29 @@ Rivet.Start({
 })
 ```
 
-`Roots` must be an array of Roblox Instances. Rivet loads ModuleScripts under
-those roots as Units.
+`Roots` is the list of places Rivet should search for Unit ModuleScripts.
 
-## Access Units
+## 3. Get a Unit
 
-```lua
-local Inventory = Rivet:Get("Inventory")
-```
-
-`Rivet:Get` is available after `Rivet.Start` completes.
-
-## Enable Network Debug Stats
+After startup, use `Rivet.Get` or `Rivet:Get` to access a Unit by id.
 
 ```lua
-Rivet.Start({
-	Roots = {
-		ReplicatedStorage.Units,
-	},
-	Debug = {
-		Network = true,
-	},
-})
-
-local stats = Rivet.Debug:GetNetworkStats()
+local Inventory = Rivet.Get("Inventory")
 ```
 
-Network debug stats are disabled by default.
+Rivet uses `Unit.Id` when it exists. If a Unit does not set `Id`, Rivet uses the
+ModuleScript name.
 
-## Shut Down
+## 4. Shut Rivet Down
+
+When the runtime ends, call:
 
 ```lua
 Rivet.Destroy()
 ```
 
-Destroy runs in reverse boot order. For each Unit, Rivet calls the optional
-`Destroy` method first, then cleans `self.Clean`.
+Rivet destroys Units in the reverse order they started. This keeps dependencies
+alive while the Units that use them are cleaning up.
+
+Previous: [Docs Index](index.md)  
+Next: [Units](units.md)

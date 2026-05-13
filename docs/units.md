@@ -1,10 +1,12 @@
 # Units
 
-A Unit is a ModuleScript that returns a table. Rivet v1.0 keeps Units ordinary:
-id fields, optional dependencies, optional lifecycle methods, and optional
-surface metadata.
+A Unit is the main building block in Rivet.
 
-v1.0 does **not** include generated types or a state system.
+Think of a Unit as a normal ModuleScript that Rivet knows how to manage. You do
+not need a builder API or a special class system. Return a table, add a few
+fields when you need them, and Rivet handles the runtime work.
+
+## A Small Unit
 
 ```lua
 --!strict
@@ -12,32 +14,52 @@ v1.0 does **not** include generated types or a state system.
 local Inventory = {}
 
 Inventory.Id = "Inventory"
-Inventory.Dependencies = { "Data" }
 
 function Inventory:Init()
-	self.Data = self:Get("Data")
+	self.Items = {}
 end
 
 function Inventory:Start()
+	print("Inventory is ready")
 end
 
 return Inventory
 ```
 
-## Ids
+## What Rivet Adds
 
-`Id` is optional. If omitted, Rivet uses the ModuleScript name.
-
-Unit ids must be unique across all configured roots. Duplicate ids throw a clear
-startup error.
-
-## Runtime Fields
-
-Rivet attaches these fields before `Init` runs:
+Before `Init` runs, Rivet attaches a few useful runtime fields:
 
 - `self.Id`
 - `self.Dependencies`
+- `self.Surfaces`
 - `self.Clean`
 - `self:Get(id)`
 
-`self:Get(id)` returns another started Unit context from the same runtime.
+The table is still your table. Rivet does not hide it behind a framework object.
+
+## Unit Ids
+
+`Id` is the name Rivet uses to find the Unit later.
+
+```lua
+Inventory.Id = "Inventory"
+```
+
+If you leave it out, Rivet uses the ModuleScript name.
+
+```lua
+-- ModuleScript named Inventory
+local Inventory = {}
+
+return Inventory
+```
+
+Both examples can be accessed with:
+
+```lua
+local Inventory = Rivet.Get("Inventory")
+```
+
+Previous: [Getting Started](getting-started.md)  
+Next: [Dependencies](dependencies.md)

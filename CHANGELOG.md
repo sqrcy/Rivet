@@ -5,10 +5,8 @@
 - Stabilized the public API: `Rivet.Start`, `Rivet.Get` / `Rivet:Get`,
   `Rivet.Destroy`, `Rivet.Use`, `Rivet.Codec:Register`, `Rivet.Clean`, and
   `Rivet.Debug:GetNetworkStats`.
-- Prepared Wally metadata for a BSD-3-Clause v1.0 package by Walker Finch
-  (`@sqrcy`).
+- Prepared Wally metadata for a BSD-3-Clause v1.0 package by `@sqrcy`.
 - Added benchmark scaffolding and final release checklist documentation.
-- Confirmed generated types and a state system are intentionally outside v1.0.
 
 ## 0.5.0
 
@@ -48,5 +46,3 @@
 - Added managed Units with ids, dependencies, dependency-sorted boot, lifecycle,
   runtime lookup, and cleanup.
 - Added docs, a basic example, and v0.1 test coverage.
-- Intentionally omitted networking, remotes, surfaces, codecs, plugins,
-  generated types, and state systems.

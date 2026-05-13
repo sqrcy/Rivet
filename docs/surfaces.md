@@ -1,42 +1,63 @@
 # Surfaces
 
-Surfaces declare which Unit methods are public across a runtime context.
+Surfaces are how a Unit says, "these are the parts of me that are public."
 
-v1.0 supports Client `Query`, `Action`, and `Signal` surfaces plus Shared
-metadata. v1.0 does **not** include generated types or a state system.
+Without surfaces, a Unit is still useful locally. With surfaces, Rivet can build
+safe runtime access around specific methods and signals.
+
+## Client Surfaces
+
+Client surfaces are available to client code through Rivet proxies.
 
 ```lua
---!strict
-
-local Inventory = {}
-
-Inventory.Id = "Inventory"
 Inventory.Surfaces = {
 	Client = {
 		GetItems = "Query",
-		EquipItem = {
-			Kind = "Action",
-		},
+		EquipItem = "Action",
 		ItemAdded = "Signal",
 	},
+}
+```
+
+There are three Client surface kinds:
+
+- `Query`: the client asks the server for a result.
+- `Action`: the client tells the server to do something.
+- `Signal`: the server sends an event to clients.
+
+## Shared Surfaces
+
+Shared surfaces are public metadata for ordinary methods.
+
+```lua
+Inventory.Surfaces = {
 	Shared = {
 		"CanStack",
 	},
 }
 
-function Inventory:GetItems(player: Player)
-	return {}
-end
-
-function Inventory:EquipItem(player: Player, itemId: string)
-end
-
 function Inventory:CanStack(itemId: string): boolean
 	return true
 end
-
-return Inventory
 ```
 
-Query and Action entries must reference existing Unit methods. Signal entries
-create server-side signal helpers and do not require a backing method.
+## Shorthand and Expanded Forms
+
+This shorthand:
+
+```lua
+GetItems = "Query"
+```
+
+Means the same kind as this expanded form:
+
+```lua
+GetItems = {
+	Kind = "Query",
+}
+```
+
+Use the expanded form when you want contracts later.
+
+Previous: [Clean](clean.md)  
+Next: [Networking](networking.md)

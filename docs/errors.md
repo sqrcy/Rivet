@@ -1,22 +1,38 @@
 # Errors
 
-Rivet errors are intended to identify the failing operation and the Unit or
-surface involved.
+Rivet tries to make startup and runtime errors point to the thing you can fix.
 
-v1.0 does **not** include generated types or a state system.
+When something fails, read the message from left to right:
 
-Examples:
+1. what Rivet was doing
+2. which Unit or surface was involved
+3. what value was expected
+4. what to change
+
+## Missing Dependency
 
 ```text
 Rivet missing dependency. Unit "Inventory" depends on missing unit "Data".
 ```
 
+This means Rivet loaded `Inventory`, saw `Dependencies = { "Data" }`, and could
+not find a Unit with `Id = "Data"` in the configured roots.
+
+## Circular Dependency
+
 ```text
 Rivet circular dependency. Circular Rivet dependency detected: A -> B -> C -> A
 ```
 
+This means the dependency chain loops back to where it started.
+
+## Contract Failure
+
 ```text
-Rivet contract failed: Inventory.EquipItem arg #1 expected string, got number (server)
+Rivet contract failed: Inventory.EquipItem arg #1 expected string, got number
 ```
 
-When a networking contract fails, the call fails before the Unit method runs.
+This means a surface call reached a contract and the value did not match.
+
+Previous: [Plugins](plugins.md)  
+Next: [API Reference](api-reference.md)

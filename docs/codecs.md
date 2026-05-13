@@ -1,7 +1,12 @@
 # Codecs
 
-Rivet v1.0 supports explicit codecs for custom objects crossing network
-boundaries. v1.0 does **not** include generated types or a state system.
+Roblox remotes can send simple values easily. Game objects often need a little
+help.
+
+A codec teaches Rivet how to turn a custom object into remote-safe data and how
+to rebuild it on the other side.
+
+## Register a Codec
 
 ```lua
 Rivet.Codec:Register("Item", {
@@ -18,7 +23,7 @@ Rivet.Codec:Register("Item", {
 })
 ```
 
-Use the codec id as a contract name:
+## Use the Codec in a Contract
 
 ```lua
 Inventory.Surfaces = {
@@ -26,10 +31,6 @@ Inventory.Surfaces = {
 		GetItem = {
 			Kind = "Query",
 			Returns = "Item",
-		},
-		UseItem = {
-			Kind = "Action",
-			Args = { "Item" },
 		},
 		ItemAdded = {
 			Kind = "Signal",
@@ -39,5 +40,12 @@ Inventory.Surfaces = {
 }
 ```
 
-Both sides of a network boundary must register matching codec ids. Codec ids are
-explicit; Rivet does not guess classes from tables or metatables.
+The contract name `Item` matches the codec id.
+
+## Keep Codecs Explicit
+
+Rivet uses the codec id you registered. It does not guess from table shape or
+metatables. That keeps network behavior visible in your code.
+
+Previous: [Contracts](contracts.md)  
+Next: [Plugins](plugins.md)

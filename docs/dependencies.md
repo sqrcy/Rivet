@@ -1,8 +1,11 @@
 # Dependencies
 
-Rivet v1.0 supports explicit Unit dependencies by id.
+Units often need each other. For example, `Inventory` may need `Data` before it
+can load player items.
 
-v1.0 does **not** include generated types or a state system.
+Rivet uses explicit dependency ids so startup order is easy to see.
+
+## Declare a Dependency
 
 ```lua
 --!strict
@@ -19,9 +22,9 @@ end
 return Inventory
 ```
 
-## Ordering
+This says: start `Data` before `Inventory`.
 
-Dependencies initialize and start before dependents.
+## Startup Order
 
 If `Inventory` depends on `Data`, Rivet runs:
 
@@ -30,12 +33,12 @@ If `Inventory` depends on `Data`, Rivet runs:
 3. `Data:Start()`
 4. `Inventory:Start()`
 
-## Errors
+All `Init` methods finish before any `Start` method runs.
 
-Rivet fails startup with clear errors when:
+## Why This Helps
 
-- A dependency id is missing.
-- Two Units use the same id.
-- Dependencies form a cycle.
+Dependencies make the order visible in the Unit itself. You do not need to rely
+on script names, folder order, or hidden require chains.
 
-Circular dependency errors include the dependency path.
+Previous: [Units](units.md)  
+Next: [Lifecycle](lifecycle.md)
