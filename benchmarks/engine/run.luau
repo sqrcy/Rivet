@@ -1,7 +1,7 @@
 --!strict
 
 --[=[
-	@class RunBenchmarks
+	@class EngineBenchmarkRunner
 
 	Roblox entrypoint for Rivet benchmark runs.
 ]=]

@@ -73,9 +73,6 @@ runtime source, package metadata, project mapping, changelog, readme, and
 BSD-3-Clause license. Tests, examples, scripts, docs, and local tooling files are
 excluded from the published package.
 
-See [Packaging](docs/packaging.md) for the exact publish flow and package file
-list.
-
 ## License
 
 Rivet is licensed under BSD-3-Clause.
@@ -84,3 +81,7 @@ Rivet is licensed under BSD-3-Clause.
 
 Start with [Docs Index](docs/index.md), then use [API Reference](docs/api-reference.md)
 once you know the main ideas.
+
+Benchmarks are a separate reference path covering engine/headless overhead and
+live Studio remote behavior. Start with [Benchmarks](docs/benchmarks.md), then
+read the current [Benchmark Results](docs/benchmark-results.md).

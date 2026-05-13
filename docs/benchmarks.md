@@ -1,102 +1,148 @@
 # Benchmarks
 
-Benchmarks help answer a different question than tests.
+Rivet uses two benchmark categories because they answer different questions.
 
-Tests prove that Rivet behaves correctly. Benchmarks show how much work Rivet
-does while it behaves correctly. They are useful when you want to compare a
-change, check a release, or understand the cost of contracts, codecs, and
-network dispatch.
+**Engine/headless benchmarks** run through Open Cloud Luau Execution. They are
+best for measuring Rivet framework overhead inside a Roblox DataModel without a
+live client.
 
-## What Gets Measured
+**Studio remote benchmarks** run in a local Roblox Studio play session. They are
+best for measuring real client/server remote behavior with Rivet included.
 
-The cloud benchmark runner measures the paths that tend to matter most in a
-real game:
+Keeping these separate prevents one set of numbers from pretending to answer
+both questions.
 
-- Query dispatch with and without contracts
-- Action dispatch with contracts
-- Signal firing with payload validation
-- codec encode and decode for small objects
-- codec encode and decode for larger nested shapes
-- Unit boot and cleanup helper overhead
-- network debug counters while the calls are running
+## Engine/Headless Benchmarks
 
-The complex-shape scenarios use nested tables, arrays, dictionaries, repeated
-custom objects, and signal payloads. This makes the benchmark more useful than a
-single tiny string call.
+### Boot: Basic Surfaced Unit
 
-## Run The Benchmarks
+Starts and destroys a small Unit root with one declared Query surface.
 
-Set the environment variables from `.env.example`, then run:
+This shows the cost of Rivet's startup path: loading a Unit, normalizing
+surface metadata, creating remotes, preparing runtime fields, and tearing the
+runtime back down.
 
-```sh
-scripts/benchmark-cloud.sh
-```
+### Clean: Add And Cleanup Tasks
 
-The script:
+Creates a cleaner, adds many function tasks, and cleans them in reverse order.
 
-1. installs Wally development packages
-2. builds `benchmark.project.json`
-3. uploads the latest benchmark place through `rocale-cli`
-4. runs `benchmarks/RunBenchmarks.luau`
-5. captures the benchmark JSON from the Roblox log
-6. writes `tmp/rivet-benchmark-results.json`
-7. updates `docs/benchmark-results.md`
+This shows the cost of Rivet's built-in cleanup utility when a Unit tracks many
+small cleanup tasks.
 
-The generated Markdown report is the file to commit when you want benchmark
-numbers in the docs.
+### Query: No Contracts
 
-## Configure A Run
+Dispatches a declared Query surface without contract or codec work.
 
-The default benchmark is meant to be useful without being slow. You can make it
-more precise by increasing samples and iterations.
+This is the baseline for Rivet's internal request/response dispatch path before
+extra validation is added.
 
-```sh
-RIVET_BENCHMARK_SAMPLES=12 scripts/benchmark-cloud.sh
-```
+### Query: String Contract
 
-Available controls:
+Dispatches a Query with a string argument contract and a string return contract.
 
-- `RIVET_BENCHMARK_SAMPLES`: how many timing samples to record per scenario
-- `RIVET_BENCHMARK_WARMUPS`: how many calls to run before measuring
-- `RIVET_BENCHMARK_ITERATIONS`: calls per sample for simple scenarios
-- `RIVET_BENCHMARK_BOOT_ITERATIONS`: start/destroy passes per sample
-- `RIVET_BENCHMARK_CLEANUP_ITERATIONS`: cleaner passes per sample
-- `RIVET_BENCHMARK_CLEANUP_TASKS`: cleanup tasks added per cleaner pass
-- `RIVET_BENCHMARK_CODEC_ITERATIONS`: calls per sample for small codec scenarios
-- `RIVET_BENCHMARK_COMPLEX_ITERATIONS`: calls per sample for large payloads
-- `RIVET_BENCHMARK_COMPLEX_SIZE`: how many item-like entries go into each large payload
+This shows the overhead of validating client arguments, dispatching the server
+method, validating the return value, and sending the result back.
 
-More samples make the averages steadier. More iterations make each sample less
-noisy. Larger complex payloads make codec cost easier to see.
+### Action: String Contract
 
-## Read The Report
+Dispatches an Action with a string argument contract.
 
-The report uses microseconds per operation. Lower mean and median values are
-better.
+This shows the one-way internal dispatch path for client-to-server work that
+does not return a value.
 
-The most useful columns are:
+### Signal: Number Payload
 
-- `Mean us/op`: average time per operation across all samples
-- `Median us/op`: middle sample, useful when one sample was unusually slow
-- `Std dev us`: how much samples moved around
-- `Ops/sec`: rough throughput from the mean
-- `Samples`: how many timing passes were averaged
-- `Iterations`: how many operations were inside each timing pass
+Fires a server Signal with a number payload contract.
 
-Always compare benchmark runs made with the same settings. If you change sample
-count, iteration count, or complex payload size, note that in the report or PR.
+This shows the server signal wrapper path, including payload validation and
+dispatch through the signal helper.
 
-## Expected Output Files
+### Query: Item Codec Return
 
-After a successful run:
+Returns a small custom object from a Query.
 
-- `docs/benchmark-results.md` contains the formatted report
-- `tmp/rivet-benchmark-results.json` contains the raw benchmark data
-- `tmp/rocale-benchmark-output.log` contains the full cloud runner log
-- `tmp/rivet-benchmarks.rbxlx` contains the built benchmark place
+This shows the cost of encoding a server object into remote-safe data and
+decoding it back into an object-like value for the caller.
 
-Only the Markdown report is intended for documentation. Files under `tmp/` are
-local run output.
+### Action: Item Codec Arg
 
-Previous: [Cloud Testing](cloud-testing.md)  
+Sends a small custom object into an Action.
+
+This shows the argument codec path: encode the value, dispatch the Action, then
+decode it for the server method.
+
+### Signal: Item Codec Payload
+
+Fires a Signal with a small custom object payload.
+
+This shows codec cost on a server-pushed event payload.
+
+### Query: Complex Codec Return
+
+Returns a larger nested payload from a Query.
+
+The payload contains arrays, dictionaries, repeated custom objects, booleans,
+numbers, and trace entries. This shows how codec cost grows when the shape is
+closer to real game data.
+
+### Action: Complex Codec Arg
+
+Sends the same larger nested payload into an Action.
+
+This shows the cost of moving a structured custom value across a surfaced
+Action.
+
+### Signal: Complex Codec Payload
+
+Fires a Signal with the larger nested payload.
+
+This shows the cost of pushing structured data through a Signal.
+
+## Studio Remote Benchmarks
+
+### Native RemoteFunction
+
+The client calls a native `RemoteFunction`; the server returns the original
+timestamp and a server timestamp.
+
+This is the native request/response baseline for live Studio networking.
+
+### Rivet Query
+
+The client calls a Rivet Query surface that returns the same timestamp shape.
+
+This shows how Rivet Query latency compares with the native RemoteFunction
+baseline.
+
+### Native RemoteEvent Echo
+
+The client fires a native `RemoteEvent`; the server echoes the payload back to
+that client.
+
+This measures event round-trip behavior and records drops/timeouts.
+
+Remote events can be throttled when a client sends too much too quickly, so this
+benchmark looks at high percentiles and drops instead of only average latency.
+
+### Rivet Action Echo
+
+The client fires a Rivet Action; the server echoes through a Rivet Signal.
+
+This shows the live one-way Action request path plus the signal response needed
+to measure round-trip latency.
+
+### Rivet Signal Fanout
+
+The client requests a server `FireAll` signal fanout and records when it receives
+the signal.
+
+This shows server-to-client fanout behavior with Rivet's Signal wrapper.
+
+### Payload Size Effects
+
+The Studio remote benchmarks run each remote shape with multiple payload sizes.
+
+This shows how latency changes as the payload moves from empty strings to larger
+strings, and helps reveal throttling, drops, or high-percentile spikes.
+
 Next: [Benchmark Results](benchmark-results.md)

@@ -20,6 +20,7 @@ exclude = [
 	"DevPackages",
 	"dev-types",
 	".env.example",
+	"benchmark-engine.project.json",
 	"benchmark.project.json",
 	"release.project.json",
 	"test.project.json",

@@ -65,9 +65,9 @@ while true; do
 
 	set +e
 	rocale-cli run \
-		--load.project benchmark.project.json \
+		--load.project benchmark-engine.project.json \
 		--output tmp/rivet-benchmarks.rbxlx \
-		--script benchmarks/RunBenchmarks.luau \
+		--script benchmarks/engine/run.luau \
 		--universeId "${universe_id}" \
 		--placeId "${place_id}" \
 		--timeout "${timeout}" \

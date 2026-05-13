@@ -80,9 +80,17 @@ end
 declare class ServerScriptService extends Instance
 end
 
+declare class StarterPlayerScripts extends Instance
+end
+
+declare class StarterPlayer extends Instance
+	StarterPlayerScripts: StarterPlayerScripts
+end
+
 declare class DataModel
 	function GetService(self, serviceName: "ReplicatedStorage"): ReplicatedStorage
 	function GetService(self, serviceName: "ServerScriptService"): ServerScriptService
+	function GetService(self, serviceName: "StarterPlayer"): StarterPlayer
 	function GetService(self, serviceName: "Players"): Players
 	function GetService(self, serviceName: "RunService"): RunService
 	function GetService(self, serviceName: "HttpService"): HttpService
@@ -92,6 +100,9 @@ end
 declare game: DataModel
 declare script: Instance
 declare _G: { [any]: any }
+declare task: {
+	wait: (duration: number?) -> number,
+}
 
 declare Instance: {
 	new: ((className: "BindableEvent") -> BindableEvent)

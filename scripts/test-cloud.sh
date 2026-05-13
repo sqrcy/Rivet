@@ -17,7 +17,7 @@ done
 
 if [[ ${#missing_vars[@]} -gt 0 ]]; then
 	printf 'Missing required environment variable(s): %s\n' "${missing_vars[*]}" >&2
-	printf 'See .env.example and docs/cloud-testing.md for setup.\n' >&2
+	printf 'See .env.example for setup.\n' >&2
 	exit 2
 fi
 

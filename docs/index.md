@@ -24,14 +24,4 @@ runtime surfaces.
 After that, use [API Reference](api-reference.md) when you need to quickly check
 names, shapes, and method behavior.
 
-## Project Reference
-
-- [Packaging](packaging.md)
-- [Testing](testing.md)
-- [Cloud Testing](cloud-testing.md)
-- [Benchmarks](benchmarks.md)
-- [Benchmark Results](benchmark-results.md)
-- [Release Checklist](release-checklist.md)
-- [Versioning](versioning.md)
-
 Next: [Getting Started](getting-started.md)
