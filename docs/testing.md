@@ -16,6 +16,7 @@ luau-lsp analyze --platform=roblox --sourcemap=sourcemap.json --definitions=dev-
 selene src tests examples benchmarks
 stylua --check src tests examples benchmarks
 rojo build test.project.json --output tmp/rivet-tests.rbxlx
+rojo build benchmark.project.json --output tmp/rivet-benchmarks.rbxlx
 wally package --list
 ```
 
@@ -29,6 +30,17 @@ scripts/test-cloud.sh
 
 The cloud runner uploads the latest test place, runs `tests/RunTests.luau`, and
 fails the command if any TestEZ spec fails.
+
+## Benchmark Runs
+
+Run:
+
+```sh
+scripts/benchmark-cloud.sh
+```
+
+This uses the same Open Cloud runner style, but executes
+`benchmarks/RunBenchmarks.luau` and updates `docs/benchmark-results.md`.
 
 Previous: [Packaging](packaging.md)  
 Next: [Cloud Testing](cloud-testing.md)

@@ -36,6 +36,22 @@ type Scenario = {
 	Run: () -> (),
 }
 
+type BenchmarkItem = {
+	Id: string,
+	Count: number,
+	Tags: { string },
+}
+
+type BenchmarkComplex = {
+	Id: string,
+	Owner: string,
+	Version: number,
+	Items: { BenchmarkItem },
+	Stats: { [string]: number },
+	Flags: { [string]: boolean },
+	Trace: { { Step: string, Weight: number } },
+}
+
 -- Constants
 
 local HttpService = game:GetService("HttpService")
@@ -49,6 +65,7 @@ local BENCHMARK_MARKER = "RIVET_BENCHMARK_JSON:"
 -- Private helpers
 
 local function globalNumber(name: string, fallback: number): number
+	-- selene: allow(global_usage)
 	local globals = _G :: Internal.DynamicTable
 	local value = globals[name]
 
@@ -163,7 +180,11 @@ local function summarize(scenario: Scenario, samples: { number }): ScenarioResul
 	}
 end
 
-local function runScenario(scenario: Scenario, sampleCount: number, warmupCount: number): ScenarioResult
+local function runScenario(
+	scenario: Scenario,
+	sampleCount: number,
+	warmupCount: number
+): ScenarioResult
 	for _index = 1, warmupCount do
 		scenario.Run()
 	end
@@ -186,7 +207,7 @@ local function runScenario(scenario: Scenario, sampleCount: number, warmupCount:
 end
 
 local function encodeItem(value: unknown): unknown
-	local item = value :: Payloads.BenchmarkItem
+	local item = value :: BenchmarkItem
 
 	return {
 		Id = item.Id,
@@ -196,7 +217,7 @@ local function encodeItem(value: unknown): unknown
 end
 
 local function decodeItem(data: unknown): unknown
-	local encoded = data :: Payloads.BenchmarkItem
+	local encoded = data :: BenchmarkItem
 
 	return {
 		Id = encoded.Id,
@@ -206,7 +227,7 @@ local function decodeItem(data: unknown): unknown
 end
 
 local function encodeComplex(value: unknown): unknown
-	local payload = value :: Payloads.BenchmarkComplex
+	local payload = value :: BenchmarkComplex
 	local items: { unknown } = {}
 	local trace: { unknown } = {}
 
@@ -234,11 +255,11 @@ end
 
 local function decodeComplex(data: unknown): unknown
 	local encoded = data :: Internal.DynamicTable
-	local items: { Payloads.BenchmarkItem } = {}
+	local items: { BenchmarkItem } = {}
 	local trace: { { Step: string, Weight: number } } = {}
 
 	for index, item in ipairs(encoded.Items :: { unknown }) do
-		items[index] = decodeItem(item) :: Payloads.BenchmarkItem
+		items[index] = decodeItem(item) :: BenchmarkItem
 	end
 
 	for index, entry in ipairs(encoded.Trace :: { Internal.DynamicTable }) do
@@ -264,6 +285,9 @@ end
 local sampleCount = math.max(globalNumber("RIVET_BENCHMARK_SAMPLES", 7), 1)
 local warmupCount = math.max(globalNumber("RIVET_BENCHMARK_WARMUPS", 50), 0)
 local baseIterations = math.max(globalNumber("RIVET_BENCHMARK_ITERATIONS", 1_000), 1)
+local bootIterations = math.max(globalNumber("RIVET_BENCHMARK_BOOT_ITERATIONS", 50), 1)
+local cleanupIterations = math.max(globalNumber("RIVET_BENCHMARK_CLEANUP_ITERATIONS", 100), 1)
+local cleanupTasks = math.max(globalNumber("RIVET_BENCHMARK_CLEANUP_TASKS", 1_000), 1)
 local codecIterations = math.max(globalNumber("RIVET_BENCHMARK_CODEC_ITERATIONS", 250), 1)
 local complexIterations = math.max(globalNumber("RIVET_BENCHMARK_COMPLEX_ITERATIONS", 100), 1)
 local complexSize = math.max(globalNumber("RIVET_BENCHMARK_COMPLEX_SIZE", 40), 1)
@@ -277,6 +301,53 @@ Rivet.Codec:Register("BenchmarkComplex", {
 	Encode = encodeComplex,
 	Decode = decodeComplex,
 })
+
+local runtimeScenarios: { Scenario } = {
+	{
+		Id = "boot-basic-unit",
+		Name = "Boot: basic surfaced Unit",
+		Category = "Runtime",
+		Iterations = bootIterations,
+		Notes = "Start and destroy a small Unit root with one declared Query surface.",
+		Run = function()
+			Rivet.Start({
+				Roots = {
+					ReplicatedStorage.Benchmarks.Fixtures.BasicUnits,
+				},
+			})
+
+			Rivet.Get("BasicBenchmarkUnit")
+			State.Touch(1)
+			Rivet.Destroy()
+		end,
+	},
+	{
+		Id = "clean-add-cleanup",
+		Name = "Clean: add and cleanup tasks",
+		Category = "Runtime",
+		Iterations = cleanupIterations,
+		Notes = "Create a cleaner, add function tasks, and clean them in reverse order.",
+		Run = function()
+			local clean = Rivet.Clean.new()
+
+			for index = 1, cleanupTasks do
+				clean:Add(function()
+					State.Touch(index % 7)
+				end)
+			end
+
+			clean:Cleanup()
+		end,
+	},
+}
+
+State.Reset()
+
+local results: { ScenarioResult } = {}
+
+for _, scenario in ipairs(runtimeScenarios) do
+	results[#results + 1] = runScenario(scenario, sampleCount, warmupCount)
+end
 
 Rivet.Start({
 	Roots = {
@@ -413,12 +484,8 @@ local scenarios: { Scenario } = {
 	},
 }
 
-State.Reset()
-
-local results: { ScenarioResult } = {}
-
-for index, scenario in ipairs(scenarios) do
-	results[index] = runScenario(scenario, sampleCount, warmupCount)
+for _, scenario in ipairs(scenarios) do
+	results[#results + 1] = runScenario(scenario, sampleCount, warmupCount)
 end
 
 local stats = Rivet.Debug:GetNetworkStats()
@@ -432,6 +499,9 @@ local report = {
 		Samples = sampleCount,
 		Warmups = warmupCount,
 		BaseIterations = baseIterations,
+		BootIterations = bootIterations,
+		CleanupIterations = cleanupIterations,
+		CleanupTasks = cleanupTasks,
 		CodecIterations = codecIterations,
 		ComplexIterations = complexIterations,
 		ComplexSize = complexSize,

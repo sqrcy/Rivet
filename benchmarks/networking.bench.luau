@@ -24,18 +24,18 @@ end
 
 Rivet.Start({
 	Roots = {
-		ReplicatedStorage.ExampleUnits,
+		ReplicatedStorage.Benchmarks.Fixtures.BasicUnits,
 	},
 })
 
 local remoteRoot = ReplicatedStorage:FindFirstChild("RivetRemotes")
 assert(remoteRoot ~= nil, "Expected RivetRemotes")
 
-local unitFolder = remoteRoot:FindFirstChild("Inventory")
-assert(unitFolder ~= nil, "Expected Inventory remotes")
+local unitFolder = remoteRoot:FindFirstChild("BasicBenchmarkUnit")
+assert(unitFolder ~= nil, "Expected BasicBenchmarkUnit remotes")
 
-local remoteInstance = unitFolder:FindFirstChild("GetItems")
-assert(remoteInstance ~= nil, "Expected Inventory.GetItems remote")
+local remoteInstance = unitFolder:FindFirstChild("Ping")
+assert(remoteInstance ~= nil, "Expected BasicBenchmarkUnit.Ping remote")
 
 local remote = remoteInstance :: RemoteFunction
 

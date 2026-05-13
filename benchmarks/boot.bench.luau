@@ -17,7 +17,7 @@ local startedAt = os.clock()
 
 Rivet.Start({
 	Roots = {
-		ReplicatedStorage.ExampleUnits,
+		ReplicatedStorage.Benchmarks.Fixtures.BasicUnits,
 	},
 })
 

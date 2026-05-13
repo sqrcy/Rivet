@@ -34,5 +34,35 @@ Rivet contract failed: Inventory.EquipItem arg #1 expected string, got number
 
 This means a surface call reached a contract and the value did not match.
 
+## Duplicate Unit Id
+
+```text
+Rivet duplicate unit id "Inventory".
+```
+
+Two loaded Units are trying to use the same id. Rename one of the Units or give
+it a more specific `Id`.
+
+## Surface Error
+
+```text
+Rivet invalid surface. Unit "Inventory" exposes Client.GetItems as Query, but method Inventory:GetItems does not exist.
+```
+
+The surface table declared a method name, but the Unit table did not define that
+method. Add the method or remove the surface entry.
+
+## Debugging Order
+
+When an error mentions a Unit id, open that Unit first. Then check:
+
+1. its `Id`
+2. its `Dependencies`
+3. its `Surfaces`
+4. any contracts or codecs used by that surface
+
+Most Rivet errors come from one of those declarations being out of sync with the
+methods on the table.
+
 Previous: [Plugins](plugins.md)  
 Next: [API Reference](api-reference.md)

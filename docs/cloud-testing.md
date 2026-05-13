@@ -16,6 +16,9 @@ That means tests run in a real Roblox place without opening Studio.
 6. prints the TestEZ logs
 7. exits with an error when tests fail
 
+Use a disposable place for this flow because every run uploads a fresh build.
+That keeps the result tied to the current checkout.
+
 ## Required Environment
 
 Set these variables outside the repo or in a local ignored `.env` file:
@@ -43,6 +46,15 @@ export RIVET_CLOUD_TEST_RETRY_DELAY=120
 ```sh
 scripts/test-cloud.sh
 ```
+
+## Reading Failures
+
+When TestEZ fails, the command exits with a non-zero status and prints the
+failing spec path. Start with the first failing spec and fix that behavior
+before rerunning.
+
+When the cloud runner itself fails before TestEZ starts, check the universe id,
+place id, API key permissions, and whether another upload is still in progress.
 
 Previous: [Testing](testing.md)  
 Next: [Benchmarks](benchmarks.md)

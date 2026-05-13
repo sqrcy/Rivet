@@ -37,6 +37,9 @@ retry_delay="${RIVET_BENCHMARK_RETRY_DELAY:-120}"
 samples="${RIVET_BENCHMARK_SAMPLES:-7}"
 warmups="${RIVET_BENCHMARK_WARMUPS:-50}"
 iterations="${RIVET_BENCHMARK_ITERATIONS:-1000}"
+boot_iterations="${RIVET_BENCHMARK_BOOT_ITERATIONS:-50}"
+cleanup_iterations="${RIVET_BENCHMARK_CLEANUP_ITERATIONS:-100}"
+cleanup_tasks="${RIVET_BENCHMARK_CLEANUP_TASKS:-1000}"
 codec_iterations="${RIVET_BENCHMARK_CODEC_ITERATIONS:-250}"
 complex_iterations="${RIVET_BENCHMARK_COMPLEX_ITERATIONS:-100}"
 complex_size="${RIVET_BENCHMARK_COMPLEX_SIZE:-40}"
@@ -55,7 +58,7 @@ output_file="tmp/rocale-benchmark-output.log"
 results_file="tmp/rivet-benchmark-results.json"
 report_file="docs/benchmark-results.md"
 
-globals="RIVET_BENCHMARK_SAMPLES=${samples},RIVET_BENCHMARK_WARMUPS=${warmups},RIVET_BENCHMARK_ITERATIONS=${iterations},RIVET_BENCHMARK_CODEC_ITERATIONS=${codec_iterations},RIVET_BENCHMARK_COMPLEX_ITERATIONS=${complex_iterations},RIVET_BENCHMARK_COMPLEX_SIZE=${complex_size}"
+globals="RIVET_BENCHMARK_SAMPLES=${samples},RIVET_BENCHMARK_WARMUPS=${warmups},RIVET_BENCHMARK_ITERATIONS=${iterations},RIVET_BENCHMARK_BOOT_ITERATIONS=${boot_iterations},RIVET_BENCHMARK_CLEANUP_ITERATIONS=${cleanup_iterations},RIVET_BENCHMARK_CLEANUP_TASKS=${cleanup_tasks},RIVET_BENCHMARK_CODEC_ITERATIONS=${codec_iterations},RIVET_BENCHMARK_COMPLEX_ITERATIONS=${complex_iterations},RIVET_BENCHMARK_COMPLEX_SIZE=${complex_size}"
 
 while true; do
 	printf 'Starting cloud benchmark attempt %s/%s...\n' "${attempt}" "${upload_retries}"

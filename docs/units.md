@@ -38,6 +38,15 @@ Before `Init` runs, Rivet attaches a few useful runtime fields:
 
 The table is still your table. Rivet does not hide it behind a framework object.
 
+## What Belongs In a Unit
+
+Use a Unit for behavior that has a lifetime. Good examples are inventory,
+profiles, matchmaking, round state, economy, notifications, and other systems
+that start once and stay available.
+
+If a ModuleScript is only a helper, keep it as a normal module and require it
+from a Unit. Rivet only manages ModuleScripts inside the roots you give it.
+
 ## Unit Ids
 
 `Id` is the name Rivet uses to find the Unit later.
@@ -60,6 +69,33 @@ Both examples can be accessed with:
 ```lua
 local Inventory = Rivet.Get("Inventory")
 ```
+
+## Keep Unit Tables Clear
+
+Most Units follow this shape:
+
+```lua
+--!strict
+
+local Inventory = {}
+
+Inventory.Id = "Inventory"
+Inventory.Dependencies = { "Data" }
+
+function Inventory:Init()
+	self.Data = self:Get("Data")
+	self.Items = {}
+end
+
+function Inventory:Start()
+	-- begin work after every Unit has initialized
+end
+
+return Inventory
+```
+
+Put metadata near the top, lifecycle methods after that, and regular methods
+after lifecycle methods. This makes the Unit easy to scan when it grows.
 
 Previous: [Getting Started](getting-started.md)  
 Next: [Dependencies](dependencies.md)

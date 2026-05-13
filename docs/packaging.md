@@ -21,6 +21,14 @@ build output.
 The current `wally.toml` exclude list is set up so `wally package --list`
 includes only the plain package files.
 
+## Why The Package Is Small
+
+Wally consumers only need the runtime package. Tests, benchmarks, examples, and
+docs are useful in this repository, but they should stay out of someone else's
+game dependency tree.
+
+Keeping the package small also makes it easier to inspect before publishing.
+
 ## Check the Package
 
 Run:
@@ -36,6 +44,9 @@ To create a local tarball for inspection:
 ```sh
 wally package --output tmp/rivet-1.0.0.tar.gz
 ```
+
+You can unpack that tarball locally if you want to verify the exact file tree
+before publishing.
 
 ## Log In to Wally
 
@@ -77,6 +88,17 @@ wally publish
 
 Wally publishes the current project using the package metadata in `wally.toml`.
 Do not reuse a version number that has already been published.
+
+## Package-Only Roblox Model
+
+To build a plain `.rbxm` artifact for manual release:
+
+```sh
+rojo build release.project.json --output tmp/Rivet.rbxm
+```
+
+That model is built from the runtime package project, not from the test or
+benchmark projects.
 
 Previous: [API Reference](api-reference.md)  
 Next: [Testing](testing.md)

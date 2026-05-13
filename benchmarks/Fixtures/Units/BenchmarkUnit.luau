@@ -11,6 +11,24 @@
 local Payloads = require(script.Parent.Parent.Payloads)
 local State = require(script.Parent.Parent.State)
 
+-- Types
+
+type BenchmarkItem = {
+	Id: string,
+	Count: number,
+	Tags: { string },
+}
+
+type BenchmarkComplex = {
+	Id: string,
+	Owner: string,
+	Version: number,
+	Items: { BenchmarkItem },
+	Stats: { [string]: number },
+	Flags: { [string]: boolean },
+	Trace: { { Step: string, Weight: number } },
+}
+
 -- Public API
 
 local BenchmarkUnit = {}
@@ -88,7 +106,7 @@ function BenchmarkUnit.GetItem(_self: unknown, _player: Player)
 	return item
 end
 
-function BenchmarkUnit.UseItem(_self: unknown, _player: Player, item: Payloads.BenchmarkItem)
+function BenchmarkUnit.UseItem(_self: unknown, _player: Player, item: BenchmarkItem)
 	State.LastValue = item
 	State.Touch(item.Count)
 end
@@ -102,11 +120,7 @@ function BenchmarkUnit.GetComplex(_self: unknown, _player: Player, size: number)
 	return payload
 end
 
-function BenchmarkUnit.UseComplex(
-	_self: unknown,
-	_player: Player,
-	payload: Payloads.BenchmarkComplex
-)
+function BenchmarkUnit.UseComplex(_self: unknown, _player: Player, payload: BenchmarkComplex)
 	State.LastValue = payload
 	State.Touch(#payload.Items)
 end

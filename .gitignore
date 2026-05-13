@@ -7,3 +7,4 @@ sourcemap.json
 tmp/
 *.rbxl
 *.rbxlx
+__pycache__/

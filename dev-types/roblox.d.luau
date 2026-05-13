@@ -55,6 +55,10 @@ declare class RunService extends Instance
 	function IsServer(self): boolean
 end
 
+declare class HttpService extends Instance
+	function JSONEncode(self, value: any): string
+end
+
 declare class StringValue extends Instance
 	Value: string
 end
@@ -67,6 +71,7 @@ end
 declare class ReplicatedStorage extends Instance
 	Rivet: ModuleScript
 	RivetRemotes: Folder?
+	Benchmarks: Folder
 	Tests: Folder
 	DevPackages: Folder
 	ExampleUnits: Folder
@@ -80,11 +85,13 @@ declare class DataModel
 	function GetService(self, serviceName: "ServerScriptService"): ServerScriptService
 	function GetService(self, serviceName: "Players"): Players
 	function GetService(self, serviceName: "RunService"): RunService
+	function GetService(self, serviceName: "HttpService"): HttpService
 	function GetService(self, serviceName: string): Instance
 end
 
 declare game: DataModel
 declare script: Instance
+declare _G: { [any]: any }
 
 declare Instance: {
 	new: ((className: "BindableEvent") -> BindableEvent)

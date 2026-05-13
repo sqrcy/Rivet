@@ -37,6 +37,9 @@ Rivet.Start({
 Plugin ids must be unique. If a hook errors, Rivet includes the plugin id and
 hook name in the error message.
 
+Plugins should stay small. A good plugin watches or augments the runtime; it
+should not make Units hard to understand on their own.
+
 ## Common Hooks
 
 - `Init(rivet)`
@@ -49,6 +52,38 @@ hook name in the error message.
 - `OnNetworkCall(context)`
 - `OnNetworkError(context)`
 - `OnDestroy()`
+
+## Hook Order
+
+Plugin lifecycle follows the Rivet lifecycle:
+
+1. plugin `Init`
+2. Unit loading and preparation hooks
+3. Unit `Init` hooks
+4. plugin `Start`
+5. Unit `Start` hooks
+6. plugin `OnDestroy`
+
+Use `Init` when the plugin needs to set up state before Units run. Use `Start`
+when the plugin wants to act after Rivet has finished preparing the runtime.
+
+## Example: Count Started Units
+
+```lua
+local CountPlugin = {}
+
+CountPlugin.Id = "CountPlugin"
+
+function CountPlugin:Init()
+	self.Count = 0
+end
+
+function CountPlugin:OnUnitStart()
+	self.Count += 1
+end
+
+return CountPlugin
+```
 
 Previous: [Codecs](codecs.md)  
 Next: [Errors](errors.md)
