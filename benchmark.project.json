@@ -1,0 +1,15 @@
+{
+	"name": "RivetBenchmarks",
+	"tree": {
+		"$className": "DataModel",
+		"ReplicatedStorage": {
+			"$className": "ReplicatedStorage",
+			"Rivet": {
+				"$path": "src/Rivet"
+			},
+			"Benchmarks": {
+				"$path": "benchmarks"
+			}
+		}
+	}
+}
