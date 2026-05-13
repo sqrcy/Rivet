@@ -1,0 +1,241 @@
+---
+title: Server And Client Setup
+description: Start Rivet on the server, create client surfaces, and retrieve generated network proxies from client code.
+---
+
+# Server And Client Setup
+
+Rivet is usually booted from one server script and one client script. Those scripts are just bootstraps. The managed code is still ModuleScripts called Units.
+
+On the server, Rivet starts your top-level systems and creates remotes for the surfaces you explicitly expose. On the client, Rivet reads those remotes and gives you small proxies. The server still owns the real Unit implementation.
+
+The public networking model has three shapes:
+
+- `Query`: client asks the server for a result.
+- `Action`: client tells the server to do work without waiting for a result.
+- `Signal`: server sends an event to clients.
+
+This page builds a minimal client/server setup around those shapes.
+
+## Server Boot Script
+
+Start Rivet from a server script and pass the Unit roots. The root should contain managed ModuleScripts only. Standalone classes, components, and helper modules should live outside that root and be required by Units when needed.
+
+```lua title="Server boot"
+--!strict
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Rivet = require(ReplicatedStorage.Packages.Rivet)
+
+Rivet.Start({
+	Roots = {
+		ReplicatedStorage.Units,
+	},
+})
+```
+
+On the server, Rivet scans roots, requires Units, validates dependencies and surfaces, sorts the graph, creates remotes, prepares runtime helpers, runs `Init`, then runs `Start`.
+
+:::info[Remote location]
+Generated remotes live under `ReplicatedStorage.RivetRemotes`. Rivet creates one folder per Unit id and one remote per declared Client surface.
+:::
+
+## Server Unit With Client Surfaces
+
+Here is a Unit that exposes one of each Client surface kind.
+
+```lua title="Managed Unit"
+--!strict
+
+local Inventory = {}
+
+Inventory.Id = "Inventory"
+Inventory.Surfaces = {
+	Client = {
+		GetItems = {
+			Kind = "Query",
+			Returns = "table",
+		},
+		EquipItem = {
+			Kind = "Action",
+			Args = { "string" },
+		},
+		ItemAdded = {
+			Kind = "Signal",
+			Payload = { "string" },
+		},
+	},
+}
+
+function Inventory:Init()
+	self.ItemsByPlayer = {}
+end
+
+function Inventory:GetItems(player: Player)
+	return self.ItemsByPlayer[player] or {}
+end
+
+function Inventory:EquipItem(player: Player, itemId: string)
+	print(player.Name, "equipped", itemId)
+	self.Client.ItemAdded:Fire(player, itemId)
+end
+
+return Inventory
+```
+
+`GetItems` and `EquipItem` must exist because `Query` and `Action` surfaces dispatch to Unit methods with the same name. `ItemAdded` does not need a method because a Signal is fired through the generated `self.Client.ItemAdded` helper.
+
+:::warning[Player is added by Rivet on the server]
+Client code does not pass `player`. On the server, Rivet receives the Roblox `Player` from the remote call and passes it as the first argument after `self`.
+:::
+
+## Client Boot Script
+
+On the client, start Rivet after remotes exist and retrieve a proxy by Unit id. This is a LocalScript bootstrapping the client runtime; it is not a client Unit.
+
+```lua title="Client boot"
+--!strict
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Rivet = require(ReplicatedStorage.Packages.Rivet)
+
+Rivet.Start({
+	Roots = {},
+})
+
+local Inventory = Rivet:Get("Inventory")
+local items = Inventory:GetItems()
+
+Inventory.ItemAdded:Connect(function(itemId: string)
+	print("New item:", itemId)
+end)
+
+if items[1] ~= nil then
+	Inventory:EquipItem(items[1])
+end
+```
+
+The client proxy has methods for declared `Query` and `Action` surfaces and signal objects for declared `Signal` surfaces. It does not expose undeclared server methods.
+
+## Query Flow
+
+A Query uses a `RemoteFunction`.
+
+```lua
+Inventory.Surfaces = {
+	Client = {
+		GetItems = "Query",
+	},
+}
+
+function Inventory:GetItems(player: Player)
+	return { "Sword", "Potion" }
+end
+```
+
+Client call:
+
+```lua
+local items = Inventory:GetItems()
+```
+
+Server method call:
+
+```lua
+Inventory:GetItems(player)
+```
+
+Use Queries when the caller needs an answer now. Examples include fetching a current inventory list, asking for a match state snapshot, or checking whether an item can be bought.
+
+## Action Flow
+
+An Action uses a `RemoteEvent`.
+
+```lua
+Inventory.Surfaces = {
+	Client = {
+		EquipItem = "Action",
+	},
+}
+
+function Inventory:EquipItem(player: Player, itemId: string)
+	print(player.Name, "equipped", itemId)
+end
+```
+
+Client call:
+
+```lua
+Inventory:EquipItem("Sword")
+```
+
+Server method call:
+
+```lua
+Inventory:EquipItem(player, "Sword")
+```
+
+Use Actions when the client is requesting work and does not need a direct return value. Equipping an item, submitting input, choosing a team, changing a setting, and acknowledging UI state are natural Action shapes.
+
+## Signal Flow
+
+A Signal also uses a `RemoteEvent`, but it flows server to client.
+
+```lua
+Inventory.Surfaces = {
+	Client = {
+		ItemAdded = "Signal",
+	},
+}
+```
+
+Server fire:
+
+```lua
+self.Client.ItemAdded:Fire(player, "Sword")
+self.Client.ItemAdded:FireAll("Sword")
+self.Client.ItemAdded:FireExcept(player, "Sword")
+```
+
+Client listen:
+
+```lua
+Inventory.ItemAdded:Connect(function(itemId: string)
+	print(itemId)
+end)
+```
+
+Use Signals when the server chooses when to announce something. Inventory changes, round state changes, notification events, and replicated domain events are good fits.
+
+## Startup Timing
+
+The server creates `ReplicatedStorage.RivetRemotes` during `Rivet.Start`. A client runtime that starts before those remotes exist will not find proxies for server Units. In most Roblox games, server scripts run before client scripts for a joining player, but if you build a custom loader, make sure the client waits for the remote root when necessary.
+
+```lua
+local remoteRoot = ReplicatedStorage:WaitForChild("RivetRemotes")
+
+Rivet.Start({
+	Roots = {},
+})
+```
+
+:::tip[Keep client boot thin]
+Use client scripts for UI, input, and presentation. Keep authoritative gameplay state and validation in server Units. Client Rivet proxies should call the public server surface, not replace the server's ownership of the system.
+:::
+
+## Debugging The Remote Tree
+
+If a client cannot call a surface, inspect `ReplicatedStorage.RivetRemotes`.
+
+```text
+ReplicatedStorage
+  RivetRemotes
+    Inventory
+      GetItems       RemoteFunction
+      EquipItem      RemoteEvent
+      ItemAdded      RemoteEvent
+```
+
+If the Unit folder is missing, the Unit either did not load, did not declare Client surfaces, or startup failed before networking finished. If a surface remote is missing, check the Unit's `Surfaces.Client` table and make sure the method exists for Query and Action surfaces.
+
+Next: [Units](../core/units).

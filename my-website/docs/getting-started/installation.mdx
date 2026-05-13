@@ -1,0 +1,187 @@
+---
+title: Installation
+description: Install Rivet with Wally, place it in a Rojo project, and start the runtime from a server script.
+---
+
+# Installation
+
+Rivet is published as the Wally package `sqrcy/rivet`. The package is designed for Roblox projects using Luau and Rojo, but the runtime itself has no external runtime dependencies. Wally is the recommended way to pull Rivet into a project because it gives you a repeatable package install and a predictable `Packages` folder that Rojo can sync into `ReplicatedStorage`.
+
+:::info[Package name]
+Use `sqrcy/rivet`. The current package metadata in this repository declares version `1.0.1`.
+:::
+
+## Add Rivet To `wally.toml`
+
+In your project's `wally.toml`, add Rivet under `[dependencies]`.
+
+```toml title="Wally config"
+[package]
+name = "your-name/your-game"
+version = "0.1.0"
+registry = "https://github.com/UpliftGames/wally-index"
+realm = "shared"
+
+[dependencies]
+Rivet = "sqrcy/rivet@1.0.1"
+```
+
+Then install packages:
+
+```bash
+wally install
+```
+
+Wally creates or updates a `Packages` folder. In a typical Rojo project, that folder is mapped into `ReplicatedStorage.Packages`.
+
+```json title="Rojo config"
+{
+  "name": "YourGame",
+  "tree": {
+    "$className": "DataModel",
+    "ReplicatedStorage": {
+      "$className": "ReplicatedStorage",
+      "Packages": {
+        "$path": "Packages"
+      },
+      "Units": {
+        "$path": "src/Units"
+      }
+    },
+    "ServerScriptService": {
+      "$className": "ServerScriptService",
+      "Boot": {
+        "$path": "src/server/Boot.server.lua"
+      }
+    }
+  }
+}
+```
+
+:::tip[Keep Units in one obvious place at first]
+Start with one Unit root such as `ReplicatedStorage.Units` or `ServerScriptService.ServerUnits`. You can pass multiple roots later, but a single root makes the first boot easier to reason about.
+:::
+
+## Require Rivet
+
+Most projects require Rivet from `ReplicatedStorage.Packages.Rivet`, but the exact path depends on your Rojo mapping. The examples in this documentation use this shape:
+
+```lua
+--!strict
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Rivet = require(ReplicatedStorage.Packages.Rivet)
+```
+
+If you are working inside this repository rather than a consuming game, the example projects map Rivet directly as `ReplicatedStorage.Rivet`:
+
+```lua
+local Rivet = require(ReplicatedStorage.Rivet)
+```
+
+The public API is the same either way. The only difference is where the ModuleScript lives.
+
+## Start The Runtime
+
+Create a server boot script and call `Rivet.Start` with the Unit roots that Rivet should scan. The script itself is not a Unit. It is just the place where the server starts the managed ModuleScript layer.
+
+```lua title="Server boot"
+--!strict
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Rivet = require(ReplicatedStorage.Packages.Rivet)
+
+Rivet.Start({
+	Roots = {
+		ReplicatedStorage.Units,
+	},
+})
+```
+
+`Roots` must be an array of Roblox Instances. Each root can be either a single ModuleScript or a container whose descendants include ModuleScripts. Rivet collects every ModuleScript below each root and treats it as a managed Unit.
+
+:::warning[Do not point Rivet at helper folders]
+Rivet treats every ModuleScript under `config.Roots` as a Unit. If a folder contains item classes, components, constants, constructors, or private utilities, keep that folder outside the roots and require those files from Units normally.
+:::
+
+## Minimal Folder Layout
+
+This is enough to begin:
+
+```text
+src
+  server
+    Boot.server.lua
+  Units
+    Data.lua
+    Inventory.lua
+default.project.json
+wally.toml
+```
+
+Mapped into Roblox, that becomes:
+
+```text
+ReplicatedStorage
+  Packages
+    Rivet
+  Units
+    Data
+    Inventory
+ServerScriptService
+  Boot
+```
+
+Rivet does not care whether the source files are `.lua` or `.luau`. The runtime sees Roblox ModuleScripts after Rojo syncs them. The docs use `.lua` in file names for familiarity and `--!strict` in code blocks because Rivet is written with strict Luau in mind.
+
+## Startup Rules
+
+`Rivet.Start(config)` can only be called when no active Rivet runtime exists. If you need to restart Rivet in a test or tool context, call `Rivet.Destroy()` first.
+
+```lua
+Rivet.Start({
+	Roots = {
+		ReplicatedStorage.Units,
+	},
+})
+
+-- Later, usually in tests or controlled tooling:
+Rivet.Destroy()
+```
+
+In a normal live server, you start Rivet once and let it run for the lifetime of the server. Restarting is mostly useful in tests and controlled tooling.
+
+## Client Installation Notes
+
+The server owns Unit implementations. Client code gets network proxies for declared `Client` surfaces. Those proxies are built from generated remotes under `ReplicatedStorage.RivetRemotes`.
+
+If your client code needs to call Rivet surfaces, require Rivet from a LocalScript and start it after the server has created remotes. The LocalScript is not a Unit either. It is the client bootstrap. A minimal client boot can pass an empty roots array:
+
+```lua title="Client boot"
+--!strict
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Rivet = require(ReplicatedStorage.Packages.Rivet)
+
+Rivet.Start({
+	Roots = {},
+})
+
+local Inventory = Rivet:Get("Inventory")
+local items = Inventory:GetItems()
+```
+
+:::info[Why client roots are often empty]
+Client `Rivet:Get("Inventory")` works because the client runtime adds proxies discovered from `ReplicatedStorage.RivetRemotes`. You only need client roots if you intentionally have client-only managed ModuleScripts. Most games can start with no client Units and only use server-owned surface proxies.
+:::
+
+## Install Checklist
+
+- Add `Rivet = "sqrcy/rivet@1.0.1"` to `[dependencies]`.
+- Run `wally install`.
+- Map `Packages` and your Unit folder into Roblox through Rojo.
+- Require Rivet from the path your project actually uses.
+- Call `Rivet.Start({ Roots = { ... } })` from a server boot script.
+- Keep standalone classes, components, and helper ModuleScripts outside Unit roots unless they are real managed systems.
+
+Next: [Your First Unit](./first-unit).

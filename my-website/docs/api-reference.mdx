@@ -1,0 +1,1071 @@
+---
+title: Full API Reference
+description: Complete public API reference for Rivet, Units, surfaces, contracts, codecs, cleanup, plugins, debug stats, and exported types.
+---
+
+# Full API Reference
+
+This page is the precise lookup reference for Rivet's public runtime. If you are learning the framework, start with [Rivet Overview](./intro), [Installation](./getting-started/installation), and the core guides first. Use this page when you need exact method names, accepted shapes, behavior, and error expectations.
+
+:::info[Public API scope]
+The public API is the `Rivet` module, `Rivet.Clean`, `Rivet.Codec`, `Rivet.Debug`, Unit fields, surface declarations, plugin hooks, and exported types under `Rivet.Types`. Internal modules such as `Loader`, `Graph`, `Registry`, `Runtime`, and `Network` are implementation details even though they exist in the repository.
+:::
+
+## Package
+
+Wally dependency:
+
+```toml
+[dependencies]
+Rivet = "sqrcy/rivet@1.0.1"
+```
+
+Typical require path in a consuming project:
+
+```lua
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Rivet = require(ReplicatedStorage.Packages.Rivet)
+```
+
+Repository examples may use:
+
+```lua
+local Rivet = require(ReplicatedStorage.Rivet)
+```
+
+## `Rivet`
+
+The `Rivet` module is the entrypoint.
+
+```lua
+local Rivet = {
+	Clean = Clean,
+	Codec = Codec,
+	Debug = Debug,
+	Use = function(plugin) end,
+	Start = function(config) end,
+	Get = function(selfOrId, id) end,
+	Destroy = function() end,
+}
+```
+
+### `Rivet.Start(config)`
+
+Starts a Rivet runtime.
+
+```lua
+Rivet.Start({
+	Roots = {
+		ReplicatedStorage.Units,
+	},
+	Debug = {
+		Network = true,
+	},
+})
+```
+
+Signature:
+
+```lua
+Rivet.Start(config: StartConfig): Rivet
+```
+
+Config:
+
+```lua
+type StartConfig = {
+	Roots: { Instance },
+	Debug: {
+		Network: boolean?,
+	}?,
+}
+```
+
+Behavior:
+
+- validates `config`
+- locks plugin registration
+- loads all Unit ModuleScripts under `config.Roots`
+- normalizes Unit ids, dependencies, surfaces, and lifecycle methods
+- rejects duplicate ids
+- prepares runtime helpers
+- dependency-sorts Units
+- creates server remotes or client proxies for Client surfaces
+- validates custom codec names used by surfaces
+- runs plugin `Init`
+- runs every Unit `Init` in dependency order
+- runs every Unit `Start` in dependency order
+- runs plugin `Start`
+- stores the active runtime
+- returns `Rivet`
+
+Errors:
+
+- called while a runtime is active
+- config is not a table
+- `Roots` missing or not an array of Instances
+- invalid Unit module shape
+- duplicate Unit id
+- missing or circular dependencies
+- invalid surfaces
+- missing codec for a custom contract
+- lifecycle or plugin hook failure
+
+:::warning[One active runtime]
+`Rivet.Start` errors if Rivet is already running. Call `Rivet.Destroy()` before starting again in tests, tools, or benchmarks.
+:::
+
+### `Rivet.Get(id)` and `Rivet:Get(id)`
+
+Returns a started Unit or client proxy by id.
+
+```lua
+local Inventory = Rivet.Get("Inventory")
+local SameInventory = Rivet:Get("Inventory")
+```
+
+Signature:
+
+```lua
+Rivet.Get(selfOrId: Rivet | string, id: string?): UnitContext
+```
+
+Both function-call and method-call forms are supported. The id must be a non-empty string.
+
+Behavior:
+
+- errors if Rivet has not started
+- resolves server Unit records first
+- resolves client proxies when available
+- errors if no Unit or proxy exists for the id
+
+Common errors:
+
+```text
+Rivet has not started; call Rivet.Start(config) before Rivet:Get(id)
+Rivet.Get expects a non-empty unit id
+Unknown Rivet unit "Inventory"
+```
+
+### `Rivet.Destroy()`
+
+Destroys the active runtime if one exists.
+
+```lua
+Rivet.Destroy()
+```
+
+Signature:
+
+```lua
+Rivet.Destroy(): ()
+```
+
+Behavior:
+
+- returns without error when no runtime is active
+- clears active runtime state before destroy
+- destroys Units in reverse dependency order
+- calls each Unit's `Destroy` method if present
+- calls each Unit's `Clean:Cleanup()`
+- fires plugin `OnDestroy`
+- unlocks plugin registration
+- reports destroy or cleanup failures
+
+### `Rivet.Use(plugin)`
+
+Registers a plugin before startup.
+
+```lua
+Rivet.Use(LogPlugin)
+```
+
+Signature:
+
+```lua
+Rivet.Use(plugin: Plugin): Rivet
+```
+
+Behavior:
+
+- validates the plugin table
+- validates non-empty unique `plugin.Id`
+- validates hook fields are functions when present
+- appends the plugin to registration order
+- returns `Rivet`
+
+Errors:
+
+```text
+Rivet.Use expects a plugin table
+Rivet plugin Id must be a non-empty string
+Rivet duplicate plugin id "LogPlugin"
+Rivet plugins must be registered before Rivet.Start()
+```
+
+## `Rivet.Clean`
+
+`Rivet.Clean` is the cleanup helper constructor.
+
+### `Rivet.Clean.new()`
+
+Creates a standalone cleaner.
+
+```lua
+local clean = Rivet.Clean.new()
+```
+
+Signature:
+
+```lua
+Rivet.Clean.new(): Clean
+```
+
+Every Unit also receives `self.Clean` automatically.
+
+### `Clean:Add(object, methodName?)`
+
+Adds a cleanup task and returns the same object.
+
+```lua
+local connection = self.Clean:Add(signal:Connect(callback))
+self.Clean:Add(folder)
+self.Clean:Add(function()
+	print("cleaned")
+end)
+self.Clean:Add(resource, "Close")
+```
+
+Signature:
+
+```lua
+Clean:Add<T>(object: T, methodName: string?): T
+```
+
+Supported task shapes:
+
+| Shape | Cleanup call |
+| --- | --- |
+| function | `object()` |
+| `Instance` | `object:Destroy()` |
+| `RBXScriptConnection` | `object:Disconnect()` |
+| table with `Destroy` | `object:Destroy()` |
+| table with `Disconnect` | `object:Disconnect()` |
+| table with `Cleanup` | `object:Cleanup()` |
+| explicit `methodName` | `object:methodName()` |
+
+Errors:
+
+- object is nil
+- explicit method name is empty
+- cleanup runs and the object cannot be cleaned
+- cleanup runs and the explicit method does not exist
+
+### `Clean:Remove(object)`
+
+Removes the first matching pending cleanup task without running it.
+
+```lua
+local task = clean:Add(function()
+	print("will not run")
+end)
+
+local removed = clean:Remove(task)
+```
+
+Signature:
+
+```lua
+Clean:Remove(object: unknown): boolean
+```
+
+Returns `true` when a task was removed, `false` otherwise.
+
+### `Clean:Cleanup()`
+
+Runs all pending cleanup tasks in reverse insertion order.
+
+```lua
+clean:Cleanup()
+```
+
+Signature:
+
+```lua
+Clean:Cleanup(): ()
+```
+
+If tasks fail, Clean attempts the remaining tasks and reports the first failure.
+
+### `Clean:Destroy()`
+
+Alias for `Clean:Cleanup()`.
+
+```lua
+clean:Destroy()
+```
+
+## `Rivet.Codec`
+
+`Rivet.Codec` registers custom network value codecs and applies them at contract boundaries.
+
+### `Rivet.Codec:Register(id, codec)`
+
+Registers an encoder/decoder pair.
+
+```lua
+Rivet.Codec:Register("Item", {
+	Encode = function(value)
+		return {
+			Id = value.Id,
+			Count = value.Count,
+		}
+	end,
+	Decode = function(data)
+		return Item.new(data.Id, data.Count)
+	end,
+})
+```
+
+Signature:
+
+```lua
+Rivet.Codec:Register(id: string, codec: CodecDefinition): ()
+
+type CodecDefinition = {
+	Encode: (value: unknown) -> unknown,
+	Decode: (data: unknown) -> unknown,
+}
+```
+
+Rules:
+
+- `id` must be a non-empty string
+- ids must be unique for the runtime
+- `codec` must be a table
+- `Encode` must be a function
+- `Decode` must be a function
+- encoded output must contain only remote-safe values
+- cyclic encoded tables are rejected
+
+Use the codec id as a contract name:
+
+```lua
+GetItem = {
+	Kind = "Query",
+	Returns = "Item",
+}
+```
+
+## `Rivet.Debug`
+
+### `Rivet.Debug:GetNetworkStats()`
+
+Returns a snapshot of network debug counters.
+
+```lua
+local stats = Rivet.Debug:GetNetworkStats()
+```
+
+Signature:
+
+```lua
+Rivet.Debug:GetNetworkStats(): NetworkStats
+```
+
+Stats are populated only when startup enables network debug:
+
+```lua
+Rivet.Start({
+	Roots = {
+		ReplicatedStorage.Units,
+	},
+	Debug = {
+		Network = true,
+	},
+})
+```
+
+Return shape:
+
+```lua
+type NetworkSurfaceStats = {
+	Kind: "Query" | "Action" | "Signal",
+	Calls: number,
+	Failures: number,
+}
+
+type NetworkStats = {
+	[string]: {
+		[string]: NetworkSurfaceStats,
+	},
+}
+```
+
+Example:
+
+```lua
+{
+	Inventory = {
+		GetItems = {
+			Kind = "Query",
+			Calls = 12,
+			Failures = 0,
+		},
+		EquipItem = {
+			Kind = "Action",
+			Calls = 4,
+			Failures = 1,
+		},
+	},
+}
+```
+
+When debug is disabled, the method returns an empty table.
+
+## Unit API
+
+A Unit module returns a table.
+
+```lua
+local Unit = {}
+
+Unit.Id = "Inventory"
+Unit.Dependencies = { "Data" }
+Unit.Surfaces = {}
+
+function Unit:Init()
+end
+
+function Unit:Start()
+end
+
+function Unit:Destroy()
+end
+
+return Unit
+```
+
+### `Unit.Id`
+
+Optional public id.
+
+```lua
+Unit.Id = "Inventory"
+```
+
+Type:
+
+```lua
+Id: string?
+```
+
+If omitted, Rivet uses the ModuleScript name. If provided, it must be a non-empty string. Duplicate ids across loaded roots are rejected.
+
+### `Unit.Dependencies`
+
+Optional array of Unit ids that must boot first.
+
+```lua
+Unit.Dependencies = { "Data", "Economy" }
+```
+
+Type:
+
+```lua
+Dependencies: { string }?
+```
+
+Rules:
+
+- must be an array
+- values must be non-empty strings
+- no holes
+- each dependency id must resolve to a loaded Unit
+- cycles are rejected
+
+### `Unit.Surfaces`
+
+Optional surface declaration table.
+
+```lua
+Unit.Surfaces = {
+	Client = {
+		GetItems = "Query",
+		EquipItem = {
+			Kind = "Action",
+			Args = { "string" },
+		},
+		ItemAdded = {
+			Kind = "Signal",
+			Payload = { "string" },
+		},
+	},
+	Shared = {
+		"CanStack",
+	},
+}
+```
+
+Supported scopes:
+
+- `Client`
+- `Shared`
+
+Unsupported scopes are rejected.
+
+### `Unit:Init()`
+
+Optional lifecycle method. Runs in dependency order after prepare and before any Unit starts.
+
+```lua
+function Unit:Init()
+	self.Data = self:Get("Data")
+	self.State = {}
+end
+```
+
+Use for dependency references and local state.
+
+### `Unit:Start()`
+
+Optional lifecycle method. Runs in dependency order after every Unit has initialized.
+
+```lua
+function Unit:Start()
+	self.Clean:Add(Players.PlayerRemoving:Connect(function(player)
+		self.State[player] = nil
+	end))
+end
+```
+
+Use for active runtime work.
+
+### `Unit:Destroy()`
+
+Optional lifecycle method. Runs during `Rivet.Destroy()` before `self.Clean:Cleanup()`.
+
+```lua
+function Unit:Destroy()
+	table.clear(self.State)
+end
+```
+
+Destroy order is reverse dependency order.
+
+## Runtime Unit Fields
+
+Rivet attaches these fields before lifecycle methods run.
+
+### `self.Clean`
+
+Unit cleaner.
+
+```lua
+self.Clean:Add(connection)
+```
+
+Type:
+
+```lua
+Clean
+```
+
+### `self:Get(id)`
+
+Runtime Unit lookup from inside a Unit.
+
+```lua
+function Inventory:Init()
+	self.Data = self:Get("Data")
+end
+```
+
+Signature:
+
+```lua
+self:Get(id: string): UnitContext
+```
+
+### `self.Client`
+
+Server-side Signal helper table for Client Signal surfaces.
+
+```lua
+self.Client.ItemAdded:Fire(player, itemId)
+self.Client.ItemAdded:FireAll(itemId)
+self.Client.ItemAdded:FireExcept(player, itemId)
+```
+
+Created when the Unit declares Client Signal surfaces.
+
+## Surface API
+
+### Client Query
+
+Shorthand:
+
+```lua
+GetItems = "Query"
+```
+
+Expanded:
+
+```lua
+GetItems = {
+	Kind = "Query",
+	Args = { "string" },
+	Returns = "table",
+}
+```
+
+Server method:
+
+```lua
+function Unit:GetItems(player: Player, category: string)
+	return {}
+end
+```
+
+Client call:
+
+```lua
+local result = UnitProxy:GetItems("Weapons")
+```
+
+### Client Action
+
+Shorthand:
+
+```lua
+EquipItem = "Action"
+```
+
+Expanded:
+
+```lua
+EquipItem = {
+	Kind = "Action",
+	Args = { "string" },
+}
+```
+
+Server method:
+
+```lua
+function Unit:EquipItem(player: Player, itemId: string)
+end
+```
+
+Client call:
+
+```lua
+UnitProxy:EquipItem("Sword")
+```
+
+### Client Signal
+
+Shorthand:
+
+```lua
+ItemAdded = "Signal"
+```
+
+Expanded:
+
+```lua
+ItemAdded = {
+	Kind = "Signal",
+	Payload = { "string" },
+}
+```
+
+Server fire:
+
+```lua
+self.Client.ItemAdded:Fire(player, "Sword")
+self.Client.ItemAdded:FireAll("Sword")
+self.Client.ItemAdded:FireExcept(player, "Sword")
+```
+
+Client listen:
+
+```lua
+UnitProxy.ItemAdded:Connect(function(itemId)
+	print(itemId)
+end)
+```
+
+### Shared Surface
+
+Shared surfaces are metadata only and do not create remotes.
+
+```lua
+Unit.Surfaces = {
+	Shared = {
+		"CanStack",
+	},
+}
+
+function Unit:CanStack(itemId: string): boolean
+	return true
+end
+```
+
+## Contract API
+
+Contract tuple fields:
+
+```lua
+Args: { string }?
+Payload: { string }?
+```
+
+Single return field:
+
+```lua
+Returns: string?
+```
+
+Built-in names:
+
+- `nil`
+- `boolean`
+- `number`
+- `string`
+- `table`
+- `Instance`
+- `Player`
+- `Vector3`
+- `CFrame`
+- `Color3`
+- `EnumItem`
+- `buffer`
+- `any`
+
+Custom names require codecs.
+
+Validation behavior:
+
+- tuple count must match contract count
+- each tuple value must match its expected contract
+- Query return must match `Returns`
+- `any` accepts every value
+- `Player` requires an Instance that `IsA("Player")`
+- unsupported custom names are allowed only when a codec is registered
+
+## Plugin API
+
+Type:
+
+```lua
+type Plugin = {
+	Id: string,
+
+	Init: ((self: Plugin, rivet: Rivet) -> ())?,
+	Start: ((self: Plugin, rivet: Rivet) -> ())?,
+	OnUnitLoaded: ((self: Plugin, unit: UnitContext) -> ())?,
+	OnUnitPrepared: ((self: Plugin, unit: UnitContext) -> ())?,
+	OnUnitInit: ((self: Plugin, unit: UnitContext) -> ())?,
+	OnUnitStart: ((self: Plugin, unit: UnitContext) -> ())?,
+	OnSurfaceRegistered: ((self: Plugin, unit: UnitContext, surface: SurfaceRecord) -> ())?,
+	OnNetworkCall: ((self: Plugin, context: unknown) -> ())?,
+	OnNetworkError: ((self: Plugin, context: unknown) -> ())?,
+	OnDestroy: ((self: Plugin) -> ())?,
+
+	[string]: unknown,
+}
+```
+
+Example:
+
+```lua
+local Plugin = {
+	Id = "LogPlugin",
+}
+
+function Plugin:OnUnitStart(unit)
+	print("Started", unit.Id)
+end
+
+Rivet.Use(Plugin)
+```
+
+Hook order is registration order.
+
+## Exported Types
+
+Import:
+
+```lua
+local Types = require(ReplicatedStorage.Packages.Rivet.Types)
+```
+
+### `Types.Clean`
+
+```lua
+export type Clean = {
+	Add: <T>(self: Clean, object: T, methodName: string?) -> T,
+	Remove: (self: Clean, object: unknown) -> boolean,
+	Cleanup: (self: Clean) -> (),
+	Destroy: (self: Clean) -> (),
+}
+```
+
+### `Types.CodecDefinition`
+
+```lua
+export type CodecDefinition = {
+	Encode: (value: unknown) -> unknown,
+	Decode: (data: unknown) -> unknown,
+}
+```
+
+### `Types.SurfaceKind`
+
+```lua
+export type SurfaceKind = "Query" | "Action" | "Signal"
+```
+
+### `Types.SurfaceScope`
+
+```lua
+export type SurfaceScope = "Client" | "Shared"
+```
+
+### `Types.SurfaceDefinition`
+
+```lua
+export type SurfaceDefinition = {
+	Kind: SurfaceKind,
+	Args: { string }?,
+	Returns: string?,
+	Payload: { string }?,
+}
+```
+
+### `Types.SurfaceRecord`
+
+```lua
+export type SurfaceRecord = {
+	Name: string,
+	Kind: SurfaceKind,
+	Scope: SurfaceScope,
+	Args: { string }?,
+	Returns: string?,
+	Payload: { string }?,
+}
+```
+
+### `Types.NormalizedSurfaces`
+
+```lua
+export type NormalizedSurfaces = {
+	Client: { [string]: SurfaceRecord },
+	Shared: { [string]: SurfaceRecord },
+}
+```
+
+### `Types.UnitContext`
+
+```lua
+export type UnitContext = {
+	Id: string,
+	Dependencies: { string },
+	Surfaces: NormalizedSurfaces,
+	Clean: Clean,
+	Client: { [string]: unknown }?,
+	Get: (self: UnitContext, id: string) -> UnitContext,
+
+	Init: ((self: UnitContext) -> ())?,
+	Start: ((self: UnitContext) -> ())?,
+	Destroy: ((self: UnitContext) -> ())?,
+
+	[string]: unknown,
+}
+```
+
+### `Types.StartConfig`
+
+```lua
+export type StartConfig = {
+	Roots: { Instance },
+	Debug: {
+		Network: boolean?,
+	}?,
+}
+```
+
+### `Types.NetworkStats`
+
+```lua
+export type NetworkSurfaceStats = {
+	Kind: SurfaceKind,
+	Calls: number,
+	Failures: number,
+}
+
+export type NetworkStats = {
+	[string]: {
+		[string]: NetworkSurfaceStats,
+	},
+}
+```
+
+### `Types.Rivet`
+
+```lua
+export type Rivet = {
+	Clean: CleanConstructor,
+	Codec: CodecRegistry,
+	Debug: Debug,
+	Use: (plugin: Plugin) -> Rivet,
+	Start: (config: StartConfig) -> Rivet,
+	Get: (selfOrId: Rivet | string, id: string?) -> UnitContext,
+	Destroy: () -> (),
+}
+```
+
+## Generated Remote Metadata
+
+Server remotes are created under:
+
+```text
+ReplicatedStorage.RivetRemotes
+```
+
+For each Client surface, Rivet creates:
+
+```text
+RivetRemotes
+  UnitId
+    SurfaceName
+      __RivetKind
+      __RivetContracts
+        Args
+          1
+          2
+        Returns
+        Payload
+          1
+```
+
+This metadata is primarily for client proxy creation and debugging. User code normally interacts through `Rivet:Get("UnitId")`, not by touching remotes directly.
+
+## Quick Recipes
+
+### Start Server Runtime
+
+```lua
+Rivet.Start({
+	Roots = {
+		ReplicatedStorage.Units,
+	},
+})
+```
+
+### Start Client Proxy Runtime
+
+```lua
+ReplicatedStorage:WaitForChild("RivetRemotes")
+
+Rivet.Start({
+	Roots = {},
+})
+```
+
+### Add A Query
+
+```lua
+Unit.Surfaces = {
+	Client = {
+		GetState = {
+			Kind = "Query",
+			Returns = "table",
+		},
+	},
+}
+
+function Unit:GetState(player: Player)
+	return {}
+end
+```
+
+### Add An Action
+
+```lua
+Unit.Surfaces = {
+	Client = {
+		SetReady = {
+			Kind = "Action",
+			Args = { "boolean" },
+		},
+	},
+}
+
+function Unit:SetReady(player: Player, ready: boolean)
+end
+```
+
+### Add A Signal
+
+```lua
+Unit.Surfaces = {
+	Client = {
+		ReadyChanged = {
+			Kind = "Signal",
+			Payload = { "Player", "boolean" },
+		},
+	},
+}
+
+self.Client.ReadyChanged:FireAll(player, true)
+```
+
+### Register A Plugin
+
+```lua
+Rivet.Use({
+	Id = "LifecycleLogger",
+	OnUnitStart = function(_self, unit)
+		print("Started", unit.Id)
+	end,
+})
+```
+
+### Register A Codec
+
+```lua
+Rivet.Codec:Register("Item", {
+	Encode = function(item)
+		return {
+			Id = item.Id,
+			Count = item.Count,
+		}
+	end,
+	Decode = function(data)
+		return Item.new(data.Id, data.Count)
+	end,
+})
+```
+
+## Error Index
+
+| Area | Example message |
+| --- | --- |
+| Start state | `Rivet has already started; call Rivet.Destroy() before starting again` |
+| Not started | `Rivet has not started; call Rivet.Start(config) before Rivet:Get(id)` |
+| Config | `Rivet.Start requires config.Roots to be an array of Instances` |
+| Unit return | `Rivet unit "..." must return a table` |
+| Duplicate id | `Duplicate Rivet unit id "Inventory"` |
+| Missing dependency | `Unit "Inventory" depends on missing unit "Data"` |
+| Circular dependency | `Circular Rivet dependency detected: A -> B -> C -> A` |
+| Invalid surface | `Client.GetItems ... method "GetItems" does not exist` |
+| Contract failure | `Inventory.EquipItem arg #1 expected string, got number` |
+| Missing codec | `register a codec with Rivet.Codec:Register("Item", codec)` |
+| Codec encode | `Rivet codec encode failed at ...` |
+| Codec decode | `Rivet codec decode failed at ...` |
+| Clean | `Rivet Clean:Add cannot add nil` |
+| Plugin | `Rivet plugin "LogPlugin" OnUnitStart failed: ...` |
+
+For debugging guidance, see [Debugging And Errors](./advanced/debugging-and-errors).

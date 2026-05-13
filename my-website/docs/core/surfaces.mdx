@@ -1,0 +1,211 @@
+---
+title: Surfaces
+description: Declare Client and Shared surfaces, choose Query, Action, and Signal kinds, and understand normalized surface metadata.
+---
+
+# Surfaces
+
+Surfaces are how a Unit declares its public shape. They answer a simple question: which methods or signals should other code be allowed to treat as part of this Unit's API?
+
+Without surfaces, a Unit can still be retrieved locally with `Rivet:Get` and called from server code. With surfaces, Rivet can validate the public shape, create remotes for client access, attach Signal helpers, and expose metadata to plugins and debug tools.
+
+```lua
+Inventory.Surfaces = {
+	Client = {
+		GetItems = "Query",
+		EquipItem = "Action",
+		ItemAdded = "Signal",
+	},
+	Shared = {
+		"CanStack",
+	},
+}
+```
+
+## Surface Scopes
+
+Rivet supports two surface scopes: `Client` and `Shared`.
+
+`Client` is the networked surface. Anything declared there becomes part of the client/server API for that Unit, and Rivet creates the RemoteFunction or RemoteEvent needed to support it.
+
+`Shared` is only metadata. It is useful when you want to mark an ordinary method as intentionally public without exposing it over remotes. Shared surfaces do not create Roblox remotes and they do not make a server method callable from the client.
+
+Unsupported scopes are rejected. A typo like `Clients` or `Server` fails startup instead of silently doing nothing.
+
+## Client Surface Kinds
+
+Client surfaces support three kinds: `Query`, `Action`, and `Signal`. The kind is the first design choice for a surface, because it tells Rivet what direction the call moves and what shape the client receives.
+
+Use `Query` when the client needs a return value:
+
+```lua
+GetItems = "Query"
+```
+
+Rivet backs a Query with a `RemoteFunction`, and the Unit must define a method with the same name. On the client, it feels like a normal method call that returns the server result.
+
+Use `Action` when the client is asking the server to do work:
+
+```lua
+EquipItem = "Action"
+```
+
+Rivet backs an Action with a `RemoteEvent`, and the Unit must define a method with the same name. On the client, it feels like a method call, but there is no return value.
+
+Use `Signal` when the server announces something to clients:
+
+```lua
+ItemAdded = "Signal"
+```
+
+Rivet backs a Signal with a `RemoteEvent`, but the Unit does not need a method named `ItemAdded`. The server fires it through `self.Client.ItemAdded`, and the client receives a Signal-like object with `Connect`.
+
+:::warning[Surfaces are public API]
+Renaming a surface changes the method the client calls and the remote name Rivet creates. Treat surface names like public function names.
+:::
+
+## Shorthand Form
+
+The shortest Client surface declaration maps a name to a kind string:
+
+```lua
+Inventory.Surfaces = {
+	Client = {
+		GetItems = "Query",
+		EquipItem = "Action",
+		ItemAdded = "Signal",
+	},
+}
+```
+
+This is good when you do not need contracts yet.
+
+## Expanded Form
+
+The expanded form adds fields such as `Args`, `Returns`, and `Payload`.
+
+```lua
+Inventory.Surfaces = {
+	Client = {
+		GetItems = {
+			Kind = "Query",
+			Args = { "string" },
+			Returns = "table",
+		},
+		EquipItem = {
+			Kind = "Action",
+			Args = { "string" },
+		},
+		ItemAdded = {
+			Kind = "Signal",
+			Payload = { "string", "number" },
+		},
+	},
+}
+```
+
+Expanded form is the normal shape for production surfaces because contracts make the remote boundary easier to debug.
+
+## Allowed Contract Fields By Kind
+
+Rivet validates that each kind only uses fields that make sense. A `Query` can declare `Kind`, `Args`, and `Returns`. An `Action` can declare `Kind` and `Args`. A `Signal` can declare `Kind` and `Payload`.
+
+These are invalid:
+
+```lua
+GetItems = {
+	Kind = "Query",
+	Payload = { "string" }, -- invalid; Query does not have Payload
+}
+
+EquipItem = {
+	Kind = "Action",
+	Returns = "boolean", -- invalid; Action does not return
+}
+
+ItemAdded = {
+	Kind = "Signal",
+	Args = { "string" }, -- invalid; Signal uses Payload
+}
+```
+
+## Method Requirements
+
+Query and Action surfaces dispatch to Unit methods with the same name, so the methods must exist.
+
+```lua
+Inventory.Surfaces = {
+	Client = {
+		GetItems = "Query",
+	},
+}
+
+function Inventory:GetItems(player: Player)
+	return {}
+end
+```
+
+If the method is missing, Rivet fails startup:
+
+```text
+Rivet invalid surface. Unit "Inventory" exposes Client.GetItems, but method "GetItems" does not exist
+```
+
+Signal surfaces do not require methods because the server fires signals through `self.Client`.
+
+```lua
+self.Client.ItemAdded:Fire(player, itemId)
+```
+
+## Shared Surfaces
+
+Shared surfaces describe ordinary public methods. They do not create remotes.
+
+```lua
+Inventory.Surfaces = {
+	Shared = {
+		"CanStack",
+	},
+}
+
+function Inventory:CanStack(itemId: string): boolean
+	return itemId ~= ""
+end
+```
+
+Use Shared surfaces when you want a Unit's local public shape to be discoverable and validated without making it callable from the client. A plugin could inspect Shared surfaces, docs generators could render them, and maintainers can see which local methods are intentionally public.
+
+:::info[Shared currently normalizes to Query-like metadata]
+Internally, Shared surfaces are stored as surface records with `Scope = "Shared"` and `Kind = "Query"`. They are metadata only; they do not create RemoteFunctions.
+:::
+
+## Duplicate Names Are Rejected
+
+A surface name can appear only once across Client and Shared scopes.
+
+```lua
+Inventory.Surfaces = {
+	Client = {
+		CanStack = "Query",
+	},
+	Shared = {
+		"CanStack",
+	},
+}
+```
+
+That fails startup because `CanStack` would have two meanings. Choose one public shape.
+
+## What Rivet Stores
+
+During startup, Rivet normalizes every surface into a record with the surface name, kind, scope, and any contract fields. You usually do not need to read those records yourself. They exist so plugins, diagnostics, and networking internals all talk about the same public shape.
+
+Plugins receive normalized client surface records through `OnSurfaceRegistered(unit, surface)`, and network debug stats use the same kind/name information.
+
+## Choosing Good Surface Names
+
+Use names that describe the request or event in plain game terms. Names like `GetItems`, `EquipItem`, `BuyItem`, `SetLoadoutSlot`, `RoundStarted`, `QuestCompleted`, and `CoinsChanged` are easy to read in both client code and server logs.
+
+Avoid generic names like `Run`, `Do`, `Fire`, or `Update` unless the Unit context makes them obvious. A client calling `Inventory:EquipItem("Sword")` is easier to audit than `Inventory:Run("equip", "Sword")`.
+
+Next: [Networking](./networking).

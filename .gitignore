@@ -8,3 +8,13 @@ tmp/
 *.rbxl
 *.rbxlx
 __pycache__/
+benchmarks
+dev-types
+.env.example
+.luaurc
+benchmark-engine.project.json
+selene.toml
+sourcemap.json
+stylua.toml
+test.project.json
+testez.yml

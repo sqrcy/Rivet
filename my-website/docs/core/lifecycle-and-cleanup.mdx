@@ -1,0 +1,245 @@
+---
+title: Lifecycle And Cleanup
+description: Learn Rivet's prepare, Init, Start, Destroy, and Clean flow, including cleanup ordering and task shapes.
+---
+
+# Lifecycle And Cleanup
+
+Rivet gives every Unit a small managed lifecycle:
+
+```text
+require Unit modules
+normalize metadata
+prepare runtime fields
+sort dependency graph
+setup networking
+run every Init
+run every Start
+later: destroy in reverse order
+```
+
+You usually write only three lifecycle methods: `Init`, `Start`, and `Destroy`.
+
+```lua
+function Unit:Init()
+end
+
+function Unit:Start()
+end
+
+function Unit:Destroy()
+end
+```
+
+All three are optional. A Unit can be useful with none of them if it only exposes methods or static behavior.
+
+## Prepare
+
+Prepare is Rivet's internal step. You do not write a `Prepare` method.
+
+During prepare, Rivet attaches:
+
+- `self.Clean`
+- `self:Get(id)`
+- normalized `self.Id`
+- normalized `self.Dependencies`
+- normalized `self.Surfaces`
+
+Signals also get server helper tables during networking setup. If a Unit declares a Client Signal, `self.Client.SignalName` exists by the time your lifecycle methods run.
+
+## Init
+
+Use `Init` to build state and capture dependencies.
+
+```lua
+function Inventory:Init()
+	self.Data = self:Get("Data")
+	self.ItemsByPlayer = {}
+end
+```
+
+Use `Init` for:
+
+- dependency lookup
+- private state tables
+- small validation
+- wiring simple references
+- registering cleanup tasks that do not require all Units to start
+
+Avoid long loops, yielding remote calls, or gameplay activation in `Init`. Rivet runs `Init` as part of startup, and all Units must finish initialization before any Unit can start.
+
+## Start
+
+Use `Start` for work that begins the Unit's active behavior.
+
+```lua
+function Inventory:Start()
+	self.Clean:Add(Players.PlayerRemoving:Connect(function(player)
+		self.ItemsByPlayer[player] = nil
+	end))
+end
+```
+
+Use `Start` for:
+
+- connecting Roblox events
+- starting loops or timers
+- loading current players
+- scheduling recurring work
+- firing initial Signals
+- interacting with other Units after all `Init` methods are complete
+
+:::tip[Start can assume initialized neighbors]
+Rivet runs all `Init` methods before any `Start` method. If a Unit exists in the runtime, its `Init` has already finished by the time your `Start` method runs.
+:::
+
+## Destroy
+
+Use `Destroy` for custom shutdown.
+
+```lua
+function Inventory:Destroy()
+	table.clear(self.ItemsByPlayer)
+end
+```
+
+After `Destroy` runs, Rivet calls `self.Clean:Cleanup()` for that Unit. Destroy order is reverse dependency order.
+
+```text
+Inventory:Destroy()
+Inventory.Clean:Cleanup()
+Data:Destroy()
+Data.Clean:Cleanup()
+```
+
+If a Unit's `Destroy` or cleanup fails, Rivet records the first failure and continues attempting to destroy the rest of the runtime. After cleanup, it reports the failure.
+
+## Clean
+
+`Clean` is Rivet's built-in cleanup helper. Every Unit receives `self.Clean`, and you can also create standalone cleaners with `Rivet.Clean.new()`.
+
+```lua
+local clean = Rivet.Clean.new()
+```
+
+Add cleanup tasks near the work that creates them:
+
+```lua
+function Session:Start()
+	local connection = Players.PlayerRemoving:Connect(function(player)
+		print(player.Name, "left")
+	end)
+
+	self.Clean:Add(connection)
+end
+```
+
+When cleanup runs, tasks are cleaned in reverse add order. Last in, first out.
+
+## Supported Cleanup Tasks
+
+`Clean:Add(object, methodName?)` understands the cleanup shapes Roblox code uses most often. Functions are called, Instances are destroyed, connections are disconnected, and tables with `Destroy`, `Disconnect`, or `Cleanup` methods have the matching method called. If an object needs a project-specific cleanup method, pass that method name as the second argument.
+
+```lua
+self.Clean:Add(function()
+	print("manual cleanup")
+end)
+
+self.Clean:Add(workspace.TempFolder)
+
+self.Clean:Add(connection)
+
+self.Clean:Add(resource, "Close")
+```
+
+:::warning[Clean cannot clean nil]
+`Clean:Add(nil)` throws. If a task is optional, check it before adding it.
+:::
+
+## Remove Without Cleaning
+
+`Clean:Remove(object)` stops tracking a task and returns whether it found it.
+
+```lua
+local connection = self.Clean:Add(signal:Connect(callback))
+
+if shouldKeepAlive then
+	self.Clean:Remove(connection)
+end
+```
+
+Remove does not disconnect or destroy the object. It only removes the pending cleanup task.
+
+## Manual Cleanup
+
+You can call cleanup manually:
+
+```lua
+self.Clean:Cleanup()
+```
+
+`Destroy` is an alias:
+
+```lua
+self.Clean:Destroy()
+```
+
+After cleanup, the cleaner removes tasks as it runs them. Calling cleanup again does not re-run already cleaned tasks.
+
+## Full Lifecycle Example
+
+```lua title="Managed Unit"
+--!strict
+
+local Players = game:GetService("Players")
+
+local Session = {}
+
+Session.Id = "Session"
+Session.Dependencies = { "Data" }
+
+function Session:Init()
+	self.Data = self:Get("Data")
+	self.ActiveSessions = {}
+end
+
+function Session:Start()
+	self.Clean:Add(Players.PlayerAdded:Connect(function(player)
+		self.ActiveSessions[player] = {
+			StartedAt = os.clock(),
+		}
+	end))
+
+	self.Clean:Add(Players.PlayerRemoving:Connect(function(player)
+		self.ActiveSessions[player] = nil
+	end))
+end
+
+function Session:Destroy()
+	table.clear(self.ActiveSessions)
+end
+
+return Session
+```
+
+This Unit makes the lifecycle obvious:
+
+`Init` stores dependencies and state. `Start` connects events and adds the connections to cleanup. `Destroy` clears the Unit's owned state. After that, `Clean` disconnects the events that were registered during `Start`.
+
+## Error Handling
+
+If `Init`, `Start`, or `Destroy` errors, Rivet wraps the message with the Unit id and lifecycle method.
+
+```text
+Rivet unit "Inventory" Start failed: ...
+```
+
+If a cleanup task errors, `Clean` reports:
+
+```text
+Rivet Clean cleanup failed: ...
+```
+
+Those messages intentionally point at the managed Unit or cleanup task path instead of leaving you with only a raw callback error.
+
+Next: [Surfaces](./surfaces).

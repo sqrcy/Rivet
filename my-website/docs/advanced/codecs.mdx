@@ -1,0 +1,324 @@
+---
+title: Codecs
+description: Register custom codecs and use them as contract names for Query returns, Action args, and Signal payloads.
+---
+
+# Codecs
+
+Roblox remotes can move primitive values, Instances, arrays, and dictionaries. Game code often works with richer domain values: item objects, loadout entries, profile snapshots, quest records, shop products, and other tables that mean more than their raw shape.
+
+A Rivet codec is an explicit encoder/decoder pair for one named custom type. The encoder turns a domain value into remote-safe data. The decoder rebuilds the domain value on the other side.
+
+```lua
+Rivet.Codec:Register("Item", {
+	Encode = function(item)
+		return {
+			Id = item.Id,
+			Count = item.Count,
+		}
+	end,
+
+	Decode = function(data)
+		return Item.new(data.Id, data.Count)
+	end,
+})
+```
+
+After registering the codec, use the codec id as a contract name.
+
+```lua
+Inventory.Surfaces = {
+	Client = {
+		GetItem = {
+			Kind = "Query",
+			Returns = "Item",
+		},
+		UseItem = {
+			Kind = "Action",
+			Args = { "Item" },
+		},
+		ItemAdded = {
+			Kind = "Signal",
+			Payload = { "Item" },
+		},
+	},
+}
+```
+
+:::info[Codecs are opt-in]
+Rivet does not guess from table shape, metatables, or field names. If a contract name is not one of Rivet's built-in primitive names, Rivet expects a codec with that exact id.
+:::
+
+## When To Use A Codec
+
+Use a codec when the value has domain meaning and should be rebuilt intentionally:
+
+- an `Item` object with constructor logic
+- a loadout slot with item and upgrade state
+- a profile summary with only safe public fields
+- a quest progress record
+- a shop product snapshot
+- a compact DTO for a large server object
+
+Do not use a codec just because a value is a table. If the value is already a simple remote-safe table and no rebuild step is needed, a `table` contract may be enough.
+
+## Registering A Codec
+
+Register codecs before `Rivet.Start`.
+
+```lua title="Server boot"
+--!strict
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Rivet = require(ReplicatedStorage.Packages.Rivet)
+local Item = require(ReplicatedStorage.Domain.Item)
+
+Rivet.Codec:Register("Item", {
+	Encode = function(value: unknown): unknown
+		local item = value :: Item.Item
+
+		return {
+			Id = item.Id,
+			Count = item.Count,
+		}
+	end,
+
+	Decode = function(data: unknown): unknown
+		local encoded = data :: {
+			Id: string,
+			Count: number,
+		}
+
+		return Item.new(encoded.Id, encoded.Count)
+	end,
+})
+
+Rivet.Start({
+	Roots = {
+		ReplicatedStorage.Units,
+	},
+})
+```
+
+Codec ids must be non-empty strings and unique. A codec must be a table with function fields named `Encode` and `Decode`.
+
+## Encoded Data Must Be Remote-Safe
+
+`Encode` should return values that Roblox remotes can move:
+
+- strings
+- numbers
+- booleans
+- nil when intentionally part of a shape
+- Instances
+- arrays and dictionaries made from remote-safe values
+- buffers if your Roblox target supports them
+
+Avoid returning:
+
+- functions
+- threads
+- userdata
+- cyclic tables
+- live connections
+- objects that only make sense in one VM
+
+Rivet checks encoded output and fails clearly if it finds unsupported values or cycles.
+
+```text
+Rivet codec encode failed at Inventory.GetItem return (server): unsupported function value
+```
+
+:::warning[Encode data, not behavior]
+A codec should send enough information to rebuild a value. It should not attempt to send methods, callbacks, connections, or private server objects.
+:::
+
+## Query Return Codec
+
+Server Unit:
+
+```lua
+Inventory.Surfaces = {
+	Client = {
+		GetItem = {
+			Kind = "Query",
+			Returns = "Item",
+		},
+	},
+}
+
+function Inventory:GetItem(player: Player)
+	return Item.new("Sword", 1)
+end
+```
+
+Flow:
+
+1. Server method returns an `Item`.
+2. Rivet validates the return contract as custom.
+3. Rivet calls `Item.Encode`.
+4. Rivet wraps the encoded table with codec metadata.
+5. Client proxy receives the encoded value.
+6. Client proxy calls `Item.Decode`.
+7. Client code receives the rebuilt `Item`.
+
+Client code:
+
+```lua
+local item = Inventory:GetItem()
+print(item.Id, item.Count)
+```
+
+## Action Argument Codec
+
+Client code:
+
+```lua
+Inventory:UseItem(Item.new("Potion", 3))
+```
+
+Surface:
+
+```lua
+UseItem = {
+	Kind = "Action",
+	Args = { "Item" },
+}
+```
+
+Server method:
+
+```lua
+function Inventory:UseItem(player: Player, item: Item.Item)
+	print(player.Name, "used", item.Id)
+end
+```
+
+Flow:
+
+1. Client proxy sees `Args = { "Item" }`.
+2. Client calls `Item.Encode`.
+3. Server dispatcher receives encoded data.
+4. Server calls `Item.Decode`.
+5. Server validates tuple count and dispatches the method.
+
+## Signal Payload Codec
+
+Surface:
+
+```lua
+ItemAdded = {
+	Kind = "Signal",
+	Payload = { "Item" },
+}
+```
+
+Server fire:
+
+```lua
+self.Client.ItemAdded:Fire(player, Item.new("Axe", 2))
+```
+
+Client listen:
+
+```lua
+Inventory.ItemAdded:Connect(function(item)
+	print(item.Id, item.Count)
+end)
+```
+
+The server encodes the item before firing. The client proxy decodes before calling the callback.
+
+## Register On Every Side That Needs It
+
+A side needs a codec when it has to encode or decode a custom value. In practice, register shared codecs in code both the server and client can require.
+
+For example:
+
+```text
+ReplicatedStorage
+  Domain
+    Item
+  Codecs
+    RegisterRivetCodecs
+```
+
+```lua title="Shared codec registration"
+--!strict
+
+local Item = require(script.Parent.Parent.Domain.Item)
+
+return function(Rivet)
+	Rivet.Codec:Register("Item", {
+		Encode = function(value)
+			return {
+				Id = value.Id,
+				Count = value.Count,
+			}
+		end,
+		Decode = function(data)
+			return Item.new(data.Id, data.Count)
+		end,
+	})
+end
+```
+
+Server and client boot can both call the registration function before `Rivet.Start`.
+
+```lua
+local registerCodecs = require(ReplicatedStorage.Codecs.RegisterRivetCodecs)
+registerCodecs(Rivet)
+```
+
+:::warning[Duplicate codec ids are rejected]
+If the same runtime calls `Rivet.Codec:Register("Item", ...)` twice, Rivet errors with a duplicate codec id. Put registration in a predictable boot path and avoid requiring the registration module multiple times in the same runtime.
+:::
+
+## Codec Design Advice
+
+Prefer small encoded shapes. A codec should send the data the receiver needs, not a full private server object.
+
+Use explicit field names. `{ Id = item.Id, Count = item.Count }` is easier to debug than positional arrays unless size pressure truly matters.
+
+Version complex shapes when they may change.
+
+```lua
+return {
+	Version = 1,
+	Id = item.Id,
+	Count = item.Count,
+	Tags = table.clone(item.Tags),
+}
+```
+
+Validate in `Decode` if the data comes from the client. Codecs transform values, but server game rules still need to reject impossible or unauthorized data.
+
+## Common Failures
+
+Missing codec:
+
+```text
+Rivet missing codec. Unit "Inventory" surface "GetItem" uses unsupported type "Item"; register a codec with Rivet.Codec:Register("Item", codec).
+```
+
+Duplicate codec:
+
+```text
+Rivet duplicate codec id "Item"
+```
+
+Encode failure:
+
+```text
+Rivet codec encode failed at Inventory.GetItem return (server): ...
+```
+
+Decode failure:
+
+```text
+Rivet codec decode failed at Inventory.UseItem arg #1 (server): ...
+```
+
+These messages include the Unit, surface, contract position, and side so you know which codec and remote boundary to inspect.
+
+Next: [Plugins](./plugins).

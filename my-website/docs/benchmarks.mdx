@@ -1,0 +1,81 @@
+---
+title: Benchmarks
+description: Rivet benchmark results for framework overhead and live Roblox networking.
+---
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+# Benchmarks
+
+These numbers are here to give you a feel for Rivet's overhead. This page is just the current results, not a guide for running every benchmark. If you want your own numbers, test it yourself with the benchmark scripts in the repo and compare against the same machine and Roblox environment.
+
+Rivet is doing real work: loading managed Units, sorting dependencies, creating remotes, validating contracts, encoding custom values, firing plugin hooks, and cleaning up after itself. The useful question is whether that work stays small enough that your actual game systems remain the thing that matters.
+
+<Tabs groupId="benchmark-results">
+  <TabItem value="engine" label="Framework Overhead" default>
+
+## Headless Engine Results
+
+These results measure Rivet's framework path inside a Roblox DataModel without a live client. Values are microseconds per operation, so lower is better.
+
+| Scenario | Mean |
+| --- | ---: |
+| Query dispatch, no contracts | 8.23 us |
+| Action dispatch with string contract | 8.17 us |
+| Signal fire with number payload contract | 8.47 us |
+| Query dispatch with string arg and return contracts | 10.23 us |
+| Query return with small `Item` codec | 11.59 us |
+| Action arg with small `Item` codec | 12.52 us |
+| Query return with larger nested codec payload | 167.09 us |
+| Action arg with larger nested codec payload | 165.24 us |
+| Boot and destroy a small surfaced Unit | 51.63 us |
+
+The short version: primitive Query, Action, and Signal surfaces are single-digit to low-double-digit microsecond operations in this benchmark. Small codecs add a little overhead. Large nested payloads cost more because the codec has to walk and rebuild more data.
+
+  </TabItem>
+  <TabItem value="studio" label="Studio Remotes">
+
+## Local Studio Remote Results
+
+These are end-to-end local Studio remote timings. At this layer you are measuring Roblox networking behavior plus Rivet's proxy/contract/codec path, so the numbers are in milliseconds.
+
+| Shape | Payload | Mean | P95 | Drops |
+| --- | ---: | ---: | ---: | ---: |
+| Native `RemoteFunction` | 0 bytes | 53.57 ms | 53.65 ms | 0 |
+| Rivet `Query` | 0 bytes | 49.86 ms | 50.72 ms | 0 |
+| Native `RemoteEvent` echo | 0 bytes | 58.71 ms | 97.87 ms | 0 |
+| Rivet `Action` echo | 0 bytes | 49.87 ms | 50.44 ms | 0 |
+| Rivet `Signal` fanout | 0 bytes | 49.27 ms | 50.20 ms | 0 |
+| Native `RemoteFunction` | 1024 bytes | 49.79 ms | 50.67 ms | 0 |
+| Rivet `Query` | 1024 bytes | 49.73 ms | 50.93 ms | 0 |
+| Native `RemoteEvent` echo | 1024 bytes | 49.21 ms | 51.00 ms | 0 |
+| Rivet `Action` echo | 1024 bytes | 49.27 ms | 51.13 ms | 0 |
+| Rivet `Signal` fanout | 1024 bytes | 49.14 ms | 51.09 ms | 0 |
+
+In the local Studio run, Rivet surfaces stayed close to the native remote baselines for the tested payloads.
+
+  </TabItem>
+  <TabItem value="live" label="Live Roblox">
+
+## Live Roblox Remote Results
+
+These were captured from a live Roblox session with one client. Live numbers move around more than local Studio numbers, so treat them as a reference point instead of a promise.
+
+| Shape | Payload | Mean | P95 | Drops |
+| --- | ---: | ---: | ---: | ---: |
+| Native `RemoteFunction` | 0 bytes | 63.73 ms | 135.07 ms | 0 |
+| Rivet `Query` | 0 bytes | 67.63 ms | 140.51 ms | 0 |
+| Native `RemoteEvent` echo | 0 bytes | 59.19 ms | 127.03 ms | 0 |
+| Rivet `Action` echo | 0 bytes | 67.91 ms | 138.41 ms | 0 |
+| Rivet `Signal` fanout | 0 bytes | 60.96 ms | 133.41 ms | 0 |
+| Native `RemoteFunction` | 1024 bytes | 67.47 ms | 133.37 ms | 0 |
+| Rivet `Query` | 1024 bytes | 70.38 ms | 135.83 ms | 0 |
+| Native `RemoteEvent` echo | 1024 bytes | 67.68 ms | 136.68 ms | 0 |
+| Rivet `Action` echo | 1024 bytes | 71.65 ms | 139.45 ms | 0 |
+| Rivet `Signal` fanout | 1024 bytes | 70.86 ms | 138.75 ms | 0 |
+
+The live run shows the expected shape: network conditions dominate the millisecond numbers, while Rivet stays in the same range as the native comparisons.
+
+  </TabItem>
+</Tabs>

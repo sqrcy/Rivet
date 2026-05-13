@@ -1,0 +1,128 @@
+.heroBanner {
+  min-height: 72vh;
+  padding: 6rem 0 4rem;
+  position: relative;
+  overflow: hidden;
+  background:
+    linear-gradient(135deg, rgba(30, 27, 75, 0.95), rgba(29, 78, 216, 0.82)),
+    radial-gradient(circle at 78% 22%, rgba(147, 197, 253, 0.24), transparent 34%),
+    #111827;
+  color: #f8fafc;
+  display: flex;
+  align-items: center;
+}
+
+.heroTitle {
+  margin: 0;
+  color: #ffffff;
+  font-size: 4.75rem;
+  line-height: 0.95;
+  letter-spacing: 0;
+}
+
+.heroSubtitle {
+  max-width: 760px;
+  margin: 1.25rem 0 0;
+  color: #dbeafe;
+  font-size: 1.25rem;
+  line-height: 1.6;
+}
+
+.buttons {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 2rem;
+}
+
+.codeCard {
+  width: min(720px, 100%);
+  margin: 2.5rem 0 0;
+  padding: 1.25rem;
+  border: 1px solid rgba(191, 219, 254, 0.28);
+  border-radius: 8px;
+  background: rgba(2, 6, 23, 0.74);
+  color: #dbeafe;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.28);
+  overflow-x: auto;
+}
+
+.codeCard code {
+  font-size: 0.95rem;
+}
+
+.featureBand {
+  padding: 3rem 0;
+  background: var(--ifm-background-color);
+}
+
+.featureGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.feature {
+  min-height: 176px;
+  padding: 1.25rem;
+  border: 1px solid var(--ifm-color-emphasis-200);
+  border-radius: 8px;
+  color: var(--ifm-font-color-base);
+  text-decoration: none;
+  background: var(--ifm-card-background-color);
+  transition:
+    border-color 140ms ease,
+    transform 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.feature:hover {
+  color: var(--ifm-font-color-base);
+  text-decoration: none;
+  border-color: var(--ifm-color-primary);
+  transform: translateY(-2px);
+  box-shadow: var(--ifm-global-shadow-lw);
+}
+
+.feature strong {
+  display: block;
+  margin-bottom: 0.7rem;
+  font-size: 1.05rem;
+}
+
+.feature span {
+  display: block;
+  color: var(--ifm-color-content-secondary);
+  font-size: 0.95rem;
+  line-height: 1.55;
+}
+
+@media screen and (max-width: 996px) {
+  .heroBanner {
+    min-height: auto;
+    padding: 4rem 0 3rem;
+  }
+
+  .heroTitle {
+    font-size: 3.5rem;
+  }
+
+  .featureGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media screen and (max-width: 640px) {
+  .heroTitle {
+    font-size: 2.6rem;
+  }
+
+  .heroSubtitle {
+    font-size: 1.05rem;
+  }
+
+  .featureGrid {
+    grid-template-columns: 1fr;
+  }
+}

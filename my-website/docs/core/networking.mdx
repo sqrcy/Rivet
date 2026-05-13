@@ -1,0 +1,298 @@
+---
+title: Networking
+description: Understand how Rivet turns Client surfaces into Roblox remotes, proxies, server dispatchers, Signal helpers, and debug counters.
+---
+
+# Networking
+
+Rivet networking is generated from Client surfaces. You describe the public network boundary in the Unit, and Rivet creates the RemoteFunctions, RemoteEvents, server dispatchers, client proxies, signal helpers, contract checks, codec transforms, debug hooks, and metadata folders needed to make that surface callable.
+
+The important rule is simple: **only declared Client surfaces are reachable from the client**.
+
+```lua
+Inventory.Surfaces = {
+	Client = {
+		GetItems = "Query",
+		EquipItem = "Action",
+		ItemAdded = "Signal",
+	},
+}
+```
+
+If `Inventory` has a private `DeleteEverything` method but does not declare it under `Surfaces.Client`, Rivet does not create a remote for it.
+
+## Remote Tree
+
+On the server, Rivet creates remotes under `ReplicatedStorage.RivetRemotes`.
+
+```text
+ReplicatedStorage
+  RivetRemotes
+    Inventory
+      GetItems       RemoteFunction
+      EquipItem      RemoteEvent
+      ItemAdded      RemoteEvent
+```
+
+Each remote also gets metadata:
+
+- `__RivetKind` string value with `Query`, `Action`, or `Signal`
+- `__RivetContracts` folder when contracts exist
+- `Args` contract list for Query and Action args
+- `Returns` string value for Query return contracts
+- `Payload` contract list for Signal payloads
+
+Client proxies read this metadata to know how to encode arguments, decode results, and expose the right method shape.
+
+## Query
+
+A Query is request/response. It uses a `RemoteFunction`.
+
+```lua title="Server Unit"
+Inventory.Surfaces = {
+	Client = {
+		GetItems = {
+			Kind = "Query",
+			Returns = "table",
+		},
+	},
+}
+
+function Inventory:GetItems(player: Player)
+	return self.Data:GetProfile(player).Items
+end
+```
+
+Client code:
+
+```lua
+local Inventory = Rivet:Get("Inventory")
+local items = Inventory:GetItems()
+```
+
+Server dispatch flow:
+
+1. Client proxy encodes arguments if custom codecs are declared.
+2. Proxy calls `RemoteFunction:InvokeServer`.
+3. Server dispatcher receives `player` and packed args.
+4. Server decodes custom args.
+5. Server validates `Args` contracts.
+6. Server calls `Inventory:GetItems(player, ...)`.
+7. Server validates the `Returns` contract.
+8. Server encodes custom return values.
+9. Client proxy decodes custom return values and returns the result.
+
+:::warning[Queries block the caller]
+Queries use `RemoteFunction`, so the client waits for the server result. Keep Query methods bounded and avoid using them for long-running work. For long work, use an Action to request work and a Signal to announce progress or completion.
+:::
+
+## Action
+
+An Action is client-to-server work without a return value. It uses a `RemoteEvent`.
+
+```lua title="Server Unit"
+Inventory.Surfaces = {
+	Client = {
+		EquipItem = {
+			Kind = "Action",
+			Args = { "string" },
+		},
+	},
+}
+
+function Inventory:EquipItem(player: Player, itemId: string)
+	print(player.Name, "equipped", itemId)
+end
+```
+
+Client code:
+
+```lua
+local Inventory = Rivet:Get("Inventory")
+Inventory:EquipItem("Sword")
+```
+
+Server dispatch flow:
+
+1. Client proxy encodes custom args.
+2. Proxy calls `RemoteEvent:FireServer`.
+3. Server dispatcher receives `player` and packed args.
+4. Server decodes custom args.
+5. Server validates `Args` contracts.
+6. Server calls `Inventory:EquipItem(player, ...)`.
+
+Actions are a good default for player input. The server can choose whether to send a later Signal, update replicated state, or silently reject the request.
+
+## Signal
+
+A Signal is server-to-client. It uses a `RemoteEvent`, but Rivet gives the server a helper under `self.Client`.
+
+```lua title="Server Unit"
+Inventory.Surfaces = {
+	Client = {
+		ItemAdded = {
+			Kind = "Signal",
+			Payload = { "string" },
+		},
+	},
+}
+
+function Inventory:AddItem(player: Player, itemId: string)
+	self.Client.ItemAdded:Fire(player, itemId)
+end
+```
+
+Server helpers:
+
+```lua
+self.Client.ItemAdded:Fire(player, itemId)
+self.Client.ItemAdded:FireAll(itemId)
+self.Client.ItemAdded:FireExcept(player, itemId)
+```
+
+Client code:
+
+```lua
+local Inventory = Rivet:Get("Inventory")
+
+Inventory.ItemAdded:Connect(function(itemId: string)
+	print("Received item:", itemId)
+end)
+```
+
+Signal dispatch flow:
+
+1. Server validates `Payload` contracts.
+2. Server encodes custom payload values.
+3. Server fires one client, all clients, or every client except one.
+4. Client proxy receives payload values.
+5. Client proxy decodes custom payload values.
+6. Client callback runs with decoded values.
+
+:::tip[Signal names should sound like events]
+`ItemAdded`, `CoinsChanged`, `RoundStarted`, and `QuestCompleted` read well as events. `GetItems` and `EquipItem` read like methods and should usually be Query or Action surfaces.
+:::
+
+## Server Method Signatures
+
+Query and Action server methods receive `player` first after `self`.
+
+```lua
+function Inventory:GetItems(player: Player, category: string)
+end
+
+function Inventory:EquipItem(player: Player, itemId: string)
+end
+```
+
+Client calls do not pass the player:
+
+```lua
+Inventory:GetItems("Weapons")
+Inventory:EquipItem("Sword")
+```
+
+Rivet gets the player from Roblox's remote call and injects it into the server method.
+
+## Client Proxy Shape
+
+Client `Rivet:Get("Inventory")` returns a proxy with declared surface names.
+
+```lua
+local Inventory = Rivet:Get("Inventory")
+
+local items = Inventory:GetItems("Weapons")
+Inventory:EquipItem("Sword")
+Inventory.ItemAdded:Connect(function(itemId)
+	print(itemId)
+end)
+```
+
+The proxy is intentionally limited. It does not contain private server methods. It also cannot resolve server dependencies through `proxy:Get`; client network proxies reject dependency lookup.
+
+## Debug Network Stats
+
+Enable network debug counters at startup:
+
+```lua
+Rivet.Start({
+	Roots = {
+		ReplicatedStorage.Units,
+	},
+	Debug = {
+		Network = true,
+	},
+})
+```
+
+Then inspect a snapshot:
+
+```lua
+local stats = Rivet.Debug:GetNetworkStats()
+```
+
+Shape:
+
+```lua
+{
+	Inventory = {
+		GetItems = {
+			Kind = "Query",
+			Calls = 12,
+			Failures = 0,
+		},
+	},
+}
+```
+
+Debug mode also fires plugin hooks:
+
+- `OnNetworkCall(context)`
+- `OnNetworkError(context)`
+
+The context includes `UnitId`, `SurfaceName`, `Kind`, and either `ArgCount` or `Message`.
+
+## Security Model
+
+Rivet does not magically make client requests trustworthy. It makes the boundary explicit and validates declared runtime shapes. You still own game rules.
+
+```lua
+function Shop:BuyItem(player: Player, itemId: string)
+	local profile = self.Data:GetProfile(player)
+	local item = self.Catalog:GetItem(itemId)
+
+	if item == nil then
+		return
+	end
+
+	if profile.Coins < item.Price then
+		return
+	end
+
+	profile.Coins -= item.Price
+	self.Inventory:AddItem(player, itemId)
+end
+```
+
+Contracts can prove that `itemId` is a string. They cannot prove that the player is allowed to buy that item. Keep authorization, rate limiting, and gameplay validation on the server.
+
+## Troubleshooting
+
+If a client proxy is missing:
+
+- confirm the server started Rivet successfully
+- confirm `ReplicatedStorage.RivetRemotes` exists
+- confirm the Unit has a Client surface
+- confirm Query and Action methods exist
+- confirm the client started after remotes were created
+- confirm the client uses the same Rivet package path as the server
+
+If a call fails:
+
+- read the error for `Unit.Surface`
+- check `Args`, `Returns`, or `Payload` contracts
+- check custom codecs are registered on the side that needs them
+- inspect `Rivet.Debug:GetNetworkStats()` when network debug is enabled
+- use plugin `OnNetworkError` if you want central logging
+
+Next: [Contracts](./contracts).

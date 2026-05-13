@@ -1,0 +1,209 @@
+---
+title: Runtime Architecture
+description: Follow Rivet's startup pipeline from loader to registry, graph sorting, runtime preparation, networking setup, lifecycle hooks, and teardown.
+---
+
+# Runtime Architecture
+
+This page explains what Rivet does internally. You do not need to memorize the implementation to use Rivet, but understanding the pipeline makes startup errors and advanced behavior easier to reason about.
+
+At a high level:
+
+```text
+Rivet.Start(config)
+  validate config
+  load Unit ModuleScripts
+  register Unit records
+  prepare runtime helpers
+  dependency-sort Units
+  setup networking
+  fire plugin hooks
+  run Init lifecycle
+  run Start lifecycle
+```
+
+## Entrypoint State
+
+The public entrypoint tracks one active runtime:
+
+```lua
+local activeRuntime = nil
+local activeOrder = nil
+```
+
+`Rivet.Start` fails if a runtime is already active. `Rivet.Destroy` clears the active runtime and destroys Units in reverse order.
+
+This is why tests often call:
+
+```lua
+Rivet.Destroy()
+Rivet.Start({
+	Roots = {
+		testRoot,
+	},
+})
+```
+
+## Config Validation
+
+`Rivet.Start` begins by validating the config:
+
+```lua
+type StartConfig = {
+	Roots: { Instance },
+	Debug: {
+		Network: boolean?,
+	}?,
+}
+```
+
+`Roots` must be a dense array of Instances. `Debug`, when present, must be a table. `Debug.Network`, when present, must be a boolean.
+
+The output of validation is a normalized config that downstream modules can trust.
+
+## Loading Units
+
+The loader collects ModuleScripts from every root:
+
+- if the root itself is a ModuleScript, it is included
+- every descendant ModuleScript is included
+
+Each ModuleScript is required. The result must be a table.
+
+Rivet then normalizes:
+
+- id
+- dependencies
+- surfaces
+- lifecycle method fields
+
+The loader creates a Unit record:
+
+```lua
+{
+	Id = "Inventory",
+	Dependencies = { "Data" },
+	Surfaces = normalizedSurfaces,
+	Module = moduleScript,
+	SourcePath = "ReplicatedStorage.Units.Inventory",
+	Unit = unitTable,
+}
+```
+
+## Registry
+
+The registry stores Unit records by id and keeps discovery order.
+
+```lua
+registry:Add(record)
+registry:Get("Inventory")
+registry:Has("Inventory")
+registry:Order()
+```
+
+Duplicate ids fail when added to the registry. Discovery order is later used for preparation and as the starting order for graph traversal.
+
+## Runtime Preparation
+
+The runtime owns prepared Unit contexts and client proxies.
+
+During `Runtime:Prepare(record)`, Rivet attaches:
+
+```lua
+record.Unit.Clean = Clean.new()
+record.Unit.Get = function(_unit, id)
+	return runtime:Get(id)
+end
+```
+
+`runtime:Get(id)` returns a server Unit if it exists, otherwise a client proxy if one was added, otherwise it errors.
+
+## Dependency Sorting
+
+The graph sorter visits Unit dependencies depth-first and produces an order where dependencies appear before dependents.
+
+```text
+Data
+Inventory depends on Data
+Shop depends on Inventory
+```
+
+Sorted order:
+
+```text
+Data, Inventory, Shop
+```
+
+Cycles and missing dependencies are detected during sorting. The cycle error includes the chain that looped back to the beginning.
+
+## Networking Setup
+
+Networking setup behaves differently on server and client.
+
+On the server:
+
+1. Find or create `ReplicatedStorage.RivetRemotes`.
+2. For every Unit with Client surfaces, create a folder named after the Unit id.
+3. Clear old remotes under that Unit folder.
+4. Add the Unit folder to `Unit.Clean` so it is removed during destroy.
+5. Validate custom codec names used by surfaces.
+6. Create `RemoteFunction` for Query and `RemoteEvent` for Action or Signal.
+7. Write kind and contract metadata under each remote.
+8. Install server dispatchers and Signal helpers.
+
+On the client:
+
+1. Look for `ReplicatedStorage.RivetRemotes`.
+2. For each Unit folder, read remotes and metadata.
+3. Build a proxy table.
+4. Add that proxy to runtime lookup.
+
+## Contract And Codec Boundaries
+
+For Query and Action args, the client encodes custom values before sending and the server decodes before validation and method dispatch.
+
+For Query returns, the server validates and encodes before returning and the client decodes after receiving.
+
+For Signal payloads, the server validates and encodes before firing and the client decodes before invoking callbacks.
+
+The side labels in errors, such as `(server)` and `(client)`, come from these boundary transforms.
+
+## Plugin Integration
+
+Plugins are registered globally before startup. When startup begins, registration is locked.
+
+Rivet fires hooks around loading, preparation, surface registration, Unit lifecycle, network calls, network errors, and destroy. Hook failures are wrapped with plugin id and hook name.
+
+Plugins are intentionally separate from the core Unit graph. They observe the runtime; Units still declare their own dependencies and surfaces.
+
+## Teardown
+
+`Rivet.Destroy()`:
+
+1. stores the active runtime and order locally
+2. clears global active runtime state
+3. destroys Units in reverse sorted order
+4. calls each Unit's `Destroy` method if present
+5. calls each Unit's `Clean:Cleanup()`
+6. fires plugin `OnDestroy`
+7. unlocks plugin registration
+
+If no runtime is active, `Rivet.Destroy()` returns without error.
+
+:::info[Destroy is idempotent when no runtime exists]
+Calling `Rivet.Destroy()` before startup or after a previous destroy is safe. It simply returns.
+:::
+
+## Why This Architecture Matters
+
+The pipeline gives Rivet three useful properties:
+
+First, failures happen early. Bad Unit shape, missing dependencies, bad surfaces, invalid contracts, missing codecs, and duplicate ids fail during startup instead of later in gameplay.
+
+Second, lifecycle order is predictable. Dependencies initialize and start before dependents. Destroy reverses that order.
+
+Third, networking is derived from one declaration. The Unit's `Surfaces.Client` table drives remotes, server dispatch, client proxy shape, contracts, codecs, debug stats, and plugin surface hooks.
+
+That is the core tradeoff of Rivet: write a small amount of explicit metadata so the runtime can make startup and networking deterministic.
+
+Next: [Benchmarks](../benchmarks).

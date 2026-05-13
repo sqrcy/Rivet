@@ -1,0 +1,250 @@
+---
+title: Your First Unit
+description: Build Data and Inventory Units, wire a dependency, and understand what Rivet attaches before lifecycle methods run.
+---
+
+# Your First Unit
+
+A Unit is a managed ModuleScript. It is a top-level system that Rivet should start, wire to other systems, expose to the network, and clean up later.
+
+The important thing is what a Unit is **not**. It is not a ServerScript. It is not a LocalScript. It is not every helper file in your project. If you have item classes, ability components, constructors, pure utilities, or config tables, keep those as normal modules and require them from Units. A Unit is the manager layer above those pieces.
+
+```lua title="Managed Unit"
+--!strict
+
+local Inventory = {}
+
+Inventory.Id = "Inventory"
+
+function Inventory:Init()
+	self.ItemsByPlayer = {}
+end
+
+function Inventory:Start()
+	print("Inventory started")
+end
+
+return Inventory
+```
+
+## Step 1: Create A Unit Folder
+
+Create a folder that will hold managed Units. In examples, this folder is `ReplicatedStorage.Units`.
+
+```text
+ReplicatedStorage
+  Units
+    Inventory
+```
+
+Rivet scans every ModuleScript under each root. If you pass `ReplicatedStorage.Units`, every ModuleScript inside `Units` and its descendants is treated as a Unit.
+
+:::warning[Roots are not generic module folders]
+If `Units` contains `Inventory` and `InventoryHelpers`, Rivet will attempt to load both as Units. Keep helper modules, classes, and components outside the root or under a folder that is not included in `config.Roots`.
+:::
+
+## Step 2: Give The Unit An Id
+
+The `Id` is the string used by Rivet lookup, dependency declarations, error messages, remote folders, debug stats, and plugin hooks.
+
+```lua
+Inventory.Id = "Inventory"
+```
+
+If `Id` is omitted, Rivet uses the ModuleScript's name:
+
+```lua title="Managed Unit"
+--!strict
+
+local Inventory = {}
+
+return Inventory
+```
+
+Both versions are retrieved with:
+
+```lua
+local Inventory = Rivet:Get("Inventory")
+```
+
+Explicit ids are useful when the source file name is not the public name you want, when a folder structure changes, or when you want a public API name that survives refactors.
+
+## Step 3: Add Lifecycle Methods
+
+Rivet recognizes three optional lifecycle methods:
+
+```lua
+function Unit:Init()
+end
+
+function Unit:Start()
+end
+
+function Unit:Destroy()
+end
+```
+
+`Init` is for connecting dependencies and building internal state. `Start` is for beginning work after every Unit has initialized. `Destroy` is for custom shutdown before cleanup tasks run.
+
+```lua title="Managed Unit"
+--!strict
+
+local Inventory = {}
+
+Inventory.Id = "Inventory"
+
+function Inventory:Init()
+	self.ItemsByPlayer = {}
+end
+
+function Inventory:Start()
+	print("Inventory ready")
+end
+
+function Inventory:Destroy()
+	table.clear(self.ItemsByPlayer)
+end
+
+return Inventory
+```
+
+:::tip[Init before Start is global]
+Rivet runs every Unit's `Init` before any Unit's `Start`. That means `Start` can assume that all managed Units have been prepared and initialized.
+:::
+
+## Step 4: Add A Dependency
+
+Create a second Unit called `Data`.
+
+```lua title="Managed Unit"
+--!strict
+
+local Data = {}
+
+Data.Id = "Data"
+
+function Data:Init()
+	self.Profiles = {}
+end
+
+function Data:GetProfile(player: Player)
+	local profile = self.Profiles[player]
+
+	if profile == nil then
+		profile = {
+			Items = {},
+		}
+		self.Profiles[player] = profile
+	end
+
+	return profile
+end
+
+return Data
+```
+
+Now tell `Inventory` that `Data` must be ready first:
+
+```lua title="Managed Unit"
+--!strict
+
+local Inventory = {}
+
+Inventory.Id = "Inventory"
+Inventory.Dependencies = { "Data" }
+
+function Inventory:Init()
+	self.Data = self:Get("Data")
+	self.ItemsByPlayer = {}
+end
+
+function Inventory:GetItems(player: Player)
+	return self.Data:GetProfile(player).Items
+end
+
+return Inventory
+```
+
+The dependency declaration does two jobs. First, it tells Rivet to boot `Data` before `Inventory`. Second, it documents that `Inventory` is coupled to `Data`, so a future reader does not need to hunt through hidden `require` chains to understand startup order.
+
+## Step 5: Retrieve A Unit
+
+After startup, call `Rivet:Get(id)` or `Rivet.Get(id)`.
+
+```lua
+local Inventory = Rivet:Get("Inventory")
+local SameInventory = Rivet.Get("Inventory")
+```
+
+Inside a Unit, use `self:Get(id)`:
+
+```lua
+function Inventory:Init()
+	self.Data = self:Get("Data")
+end
+```
+
+`self:Get` and `Rivet:Get` return the prepared Unit table. If the id does not exist, Rivet throws an `Unknown Rivet unit "Id"` error.
+
+:::warning[Lookup requires startup]
+`Rivet:Get("Inventory")` is only valid after `Rivet.Start` succeeds. If you call it before startup, Rivet errors with a message telling you to start the runtime first.
+:::
+
+## What Rivet Adds To A Unit
+
+Before lifecycle methods run, Rivet normalizes the Unit and attaches a few runtime fields. `self.Id`, `self.Dependencies`, and `self.Surfaces` are filled in so the Unit has a predictable shape. `self.Clean` is the Unit's cleanup helper. `self:Get(id)` lets a Unit retrieve another Unit by id. If the Unit declares server-to-client Signals, Rivet also gives it `self.Client` signal helpers.
+
+Those fields are attached to your table. Rivet does not wrap the table in a different object. If your Unit has methods like `GetItems` or `EquipItem`, they remain normal table functions.
+
+## A Clean Unit Shape
+
+Most Units stay readable when you keep this order:
+
+```lua
+--!strict
+
+local Inventory = {}
+
+Inventory.Id = "Inventory"
+Inventory.Dependencies = { "Data" }
+
+Inventory.Surfaces = {
+	Client = {
+		GetItems = "Query",
+		EquipItem = "Action",
+	},
+}
+
+function Inventory:Init()
+	self.Data = self:Get("Data")
+end
+
+function Inventory:Start()
+end
+
+function Inventory:Destroy()
+end
+
+function Inventory:GetItems(player: Player)
+	return self.Data:GetProfile(player).Items
+end
+
+function Inventory:EquipItem(player: Player, itemId: string)
+end
+
+return Inventory
+```
+
+Metadata at the top makes the public shape visible. Lifecycle methods next show how the Unit starts and stops. Domain methods after that are the actual gameplay behavior.
+
+## Common First Mistakes
+
+Putting work at the top level is the most common mistake. A Unit's top level should define the Unit, not run the game. Expensive work, event connections, remote calls, and loops belong in `Init` or `Start`.
+
+Using `require` to order Units is another common mistake. If `Inventory` needs `Data`, declare `Inventory.Dependencies = { "Data" }` and call `self:Get("Data")`. Use normal `require` for helper modules and static data, not for managed Unit ordering.
+
+Returning something other than a table will fail startup. Rivet expects every ModuleScript under a root to return a Unit table. If a helper returns a constructor, class object, function, or string, it should not be under a Unit root.
+
+## Next Step
+
+Next, wire this into server and client networking with [Server And Client Setup](./server-client-setup).

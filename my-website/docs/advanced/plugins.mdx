@@ -1,0 +1,237 @@
+---
+title: Plugins
+description: Register Rivet plugins, use lifecycle and network hooks, and build focused runtime extensions.
+---
+
+# Plugins
+
+Plugins are optional hook tables that observe or extend Rivet runtime behavior. They are useful for logging, diagnostics, metrics, tracing, policy checks, and other cross-cutting concerns that should not be copied into every Unit.
+
+```lua
+local LogPlugin = {}
+
+LogPlugin.Id = "LogPlugin"
+
+function LogPlugin:OnUnitStart(unit)
+	print("Started Unit", unit.Id)
+end
+
+return LogPlugin
+```
+
+Register plugins before startup:
+
+```lua
+local LogPlugin = require(script.LogPlugin)
+
+Rivet.Use(LogPlugin)
+
+Rivet.Start({
+	Roots = {
+		ReplicatedStorage.Units,
+	},
+})
+```
+
+:::warning[Plugins must be registered before `Rivet.Start`]
+Once startup begins, Rivet locks plugin registration. Late plugin registration throws because plugins need deterministic lifecycle order.
+:::
+
+## Plugin Shape
+
+A plugin is a table with an `Id` and optional hook functions.
+
+```lua
+local Plugin = {
+	Id = "MyPlugin",
+}
+
+function Plugin:Init(rivet)
+end
+
+function Plugin:Start(rivet)
+end
+
+function Plugin:OnDestroy()
+end
+
+return Plugin
+```
+
+`Id` must be a non-empty string and must be unique across registered plugins. Hook fields must be functions when present.
+
+## Hook List
+
+Rivet gives plugins hooks around the runtime lifecycle, Unit lifecycle, surfaces, network calls, and shutdown.
+
+Use `Init(rivet)` when the plugin needs to initialize after networking setup but before Unit `Init` methods run. Use `Start(rivet)` when the plugin needs to wait until every Unit has finished `Start`.
+
+For Unit-level work, `OnUnitLoaded(unit)` fires after a ModuleScript is required and normalized, `OnUnitPrepared(unit)` fires after runtime helpers are attached, `OnUnitInit(unit)` fires after the Unit's `Init`, and `OnUnitStart(unit)` fires after the Unit's `Start`.
+
+For public API and networking work, `OnSurfaceRegistered(unit, surface)` fires for each Client surface after networking setup. `OnNetworkCall(context)` fires when a network surface is called or a Signal is fired. `OnNetworkError(context)` fires when that network path fails.
+
+During shutdown, `OnDestroy()` runs after Rivet has destroyed the Unit runtime.
+
+## Startup Hook Order
+
+For a simple `Data -> Inventory` graph, hook order looks like this:
+
+```text
+OnUnitLoaded(Data)
+OnUnitLoaded(Inventory)
+OnUnitPrepared(Data)
+OnUnitPrepared(Inventory)
+OnSurfaceRegistered(...)
+Init(rivet)
+Data:Init()
+OnUnitInit(Data)
+Inventory:Init()
+OnUnitInit(Inventory)
+Data:Start()
+OnUnitStart(Data)
+Inventory:Start()
+OnUnitStart(Inventory)
+Start(rivet)
+```
+
+Hook order matters when plugins collect metadata. If you need to see normalized Units before lifecycle methods run, use `OnUnitPrepared`. If you need to see Units after their own `Init`, use `OnUnitInit`. If you need all Unit `Start` methods to finish first, use plugin `Start`.
+
+## Example: Startup Logger
+
+```lua title="Plugin module"
+--!strict
+
+local StartupLogger = {}
+
+StartupLogger.Id = "StartupLogger"
+
+function StartupLogger:OnUnitLoaded(unit)
+	print("[Rivet] loaded", unit.Id)
+end
+
+function StartupLogger:OnUnitInit(unit)
+	print("[Rivet] initialized", unit.Id)
+end
+
+function StartupLogger:OnUnitStart(unit)
+	print("[Rivet] started", unit.Id)
+end
+
+return StartupLogger
+```
+
+Register:
+
+```lua
+Rivet.Use(require(ReplicatedStorage.Plugins.StartupLogger))
+```
+
+## Example: Network Metrics
+
+Network hooks receive small context tables.
+
+`OnNetworkCall` context:
+
+```lua
+{
+	UnitId = "Inventory",
+	SurfaceName = "GetItems",
+	Kind = "Query",
+	ArgCount = 1,
+}
+```
+
+`OnNetworkError` context:
+
+```lua
+{
+	UnitId = "Inventory",
+	SurfaceName = "EquipItem",
+	Kind = "Action",
+	Message = "Rivet contract failed: ...",
+}
+```
+
+Metrics plugin:
+
+```lua
+local NetworkMetrics = {
+	Id = "NetworkMetrics",
+}
+
+function NetworkMetrics:Init()
+	self.Calls = {}
+	self.Failures = {}
+end
+
+function NetworkMetrics:OnNetworkCall(context)
+	local key = `{context.UnitId}.{context.SurfaceName}`
+	self.Calls[key] = (self.Calls[key] or 0) + 1
+end
+
+function NetworkMetrics:OnNetworkError(context)
+	local key = `{context.UnitId}.{context.SurfaceName}`
+	self.Failures[key] = (self.Failures[key] or 0) + 1
+	warn("[Rivet network error]", key, context.Message)
+end
+
+return NetworkMetrics
+```
+
+:::info[Network hooks fire regardless of debug stats]
+`Rivet.Debug:GetNetworkStats()` only returns counters when `Debug.Network = true`, but plugin network hooks are fired from the same call/failure paths.
+:::
+
+## Example: Surface Policy
+
+Plugins can inspect surface records and enforce project conventions.
+
+```lua
+local SurfacePolicy = {
+	Id = "SurfacePolicy",
+}
+
+function SurfacePolicy:OnSurfaceRegistered(unit, surface)
+	if surface.Kind == "Action" and surface.Args == nil then
+		warn(`Action {unit.Id}.{surface.Name} has no Args contract`)
+	end
+end
+
+return SurfacePolicy
+```
+
+This plugin does not modify Units. It watches the public shape and warns when a convention is missed.
+
+## Keep Plugins Focused
+
+Plugins work best when they handle cross-cutting behavior: lifecycle logs, network metrics, startup timings, surface conventions, analytics bridges, and project-specific diagnostics.
+
+They get risky when they hide core gameplay behavior, mutate Units in surprising ways, create undeclared dependencies, replace surface methods, or make startup order harder to understand.
+
+:::tip[Use plugins for cross-cutting behavior]
+If behavior belongs to one gameplay system, put it in that Unit. If behavior observes or augments the runtime as a whole, use a plugin.
+:::
+
+## Failure Handling
+
+If a plugin hook errors, Rivet wraps the message with the plugin id and hook name:
+
+```text
+Rivet plugin "FailingPlugin" OnUnitLoaded failed: hook exploded
+```
+
+During startup, a plugin failure fails startup. During destroy, `OnDestroy` failures are reported after Unit runtime destroy runs.
+
+## Registering Multiple Plugins
+
+Register plugins in the order you want their hooks to run.
+
+```lua
+Rivet.Use(require(Plugins.StartupLogger))
+Rivet.Use(require(Plugins.NetworkMetrics))
+Rivet.Use(require(Plugins.SurfacePolicy))
+```
+
+Rivet calls each hook for every registered plugin in registration order.
+
+Next: [Debugging And Errors](./debugging-and-errors).

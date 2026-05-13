@@ -1,0 +1,204 @@
+---
+title: Units
+description: Understand Rivet Units, Unit ids, Unit roots, normalized runtime fields, and where behavior belongs.
+---
+
+# Units
+
+A Unit is a managed ModuleScript. It returns a table. Rivet loads that table, normalizes a few known fields, attaches runtime helpers, and runs optional lifecycle methods. Everything else is your code.
+
+Units are meant for top-level systems, not every source file. A Unit can require item classes, components, helper modules, and pure utilities just like any other ModuleScript. Rivet manages the Unit's lifecycle; it does not try to own every object that Unit uses.
+
+```lua title="Managed Unit"
+--!strict
+
+local Round = {}
+
+Round.Id = "Round"
+
+function Round:Init()
+	self.Active = false
+end
+
+function Round:Start()
+	self.Active = true
+end
+
+function Round:IsActive(): boolean
+	return self.Active
+end
+
+return Round
+```
+
+## What Counts As A Unit
+
+Any ModuleScript under a root passed to `Rivet.Start` is loaded as a Unit. A valid Unit module must return a table.
+
+```lua
+Rivet.Start({
+	Roots = {
+		ReplicatedStorage.Units,
+	},
+})
+```
+
+If `ReplicatedStorage.Units` contains `Round`, `Data`, and `Inventory`, Rivet loads all three. If it contains a helper module that returns a function, string, or class constructor directly, startup fails because Rivet expects a Unit table.
+
+:::warning[Keep helpers outside Unit roots]
+Put standalone components, classes, and helpers in a folder that is not passed to `Rivet.Start`. Units can still require them normally. Rivet scans descendants, so nested helpers inside a root are still treated as Units.
+:::
+
+## Unit Ids
+
+`Unit.Id` is optional, but important. If present, it must be a non-empty string. If absent, Rivet uses the ModuleScript name.
+
+```lua
+local Inventory = {}
+
+Inventory.Id = "Inventory"
+
+return Inventory
+```
+
+The id is the name used for lookup, dependencies, generated remote folders, debug stats, plugin context, and errors.
+
+Ids must be unique across all loaded roots. If two Units resolve to the same id, Rivet fails startup and includes both source paths in the duplicate-id error.
+
+:::tip[Prefer stable ids for public systems]
+If client code calls `Rivet:Get("Inventory")`, treat `"Inventory"` like a public API name. Renaming the source file is cheap if `Id` stays stable; renaming the id is a breaking change for dependencies, clients, plugin logic, and tests.
+:::
+
+## Unit Metadata
+
+Rivet only cares about a few top-level fields. `Id` names the Unit. `Dependencies` says which other Units must boot first. `Surfaces` declares the public Client and Shared API. `Init`, `Start`, and `Destroy` are lifecycle methods.
+
+Unknown fields are left alone. You can store methods, constants, private tables, typed values, and whatever else the Unit needs.
+
+```lua
+local Economy = {}
+
+Economy.Id = "Economy"
+Economy.Dependencies = { "Data" }
+Economy.CoinReward = 25
+
+function Economy:AwardCoins(player: Player, amount: number)
+	local profile = self.Data:GetProfile(player)
+	profile.Coins += amount
+end
+
+return Economy
+```
+
+## Runtime Fields
+
+Before `Init` runs, Rivet attaches runtime helpers to the Unit table. From your Unit's point of view, that means `self:Get(id)` and `self.Clean` are available inside lifecycle and normal methods:
+
+```lua
+function Inventory:Init()
+	print(self.Id)
+	print(self.Dependencies)
+	print(self.Surfaces)
+
+	self.Data = self:Get("Data")
+	self.Clean:Add(function()
+		print("Inventory cleaned")
+	end)
+end
+```
+
+`self.Client` is attached when the Unit declares Client Signal surfaces. If a Unit has `ItemAdded = "Signal"`, the server gets `self.Client.ItemAdded` with `Fire`, `FireAll`, and `FireExcept`.
+
+## Where Behavior Belongs
+
+Use Units for systems that start, run, and shut down. Data, inventory, economy, matchmaking, round flow, combat state, notifications, analytics wrappers, and admin command runtimes are all natural fits.
+
+Use plain modules for things without a managed lifetime. Item definitions, ability components, utility functions, config tables, value objects, and constructors used by codecs do not need to be Units. The distinction keeps the runtime graph meaningful. A Unit should be something you might reasonably initialize, retrieve, expose, observe, or destroy.
+
+## Top-Level Code Should Define, Not Start
+
+A Unit's top level should generally do this:
+
+```lua
+local Inventory = {}
+
+Inventory.Id = "Inventory"
+Inventory.Dependencies = { "Data" }
+
+function Inventory:Init()
+end
+
+return Inventory
+```
+
+Avoid top-level runtime work:
+
+```lua
+-- Avoid this in a Unit root.
+Players.PlayerAdded:Connect(function(player)
+	-- This connection is created while the module is required.
+end)
+```
+
+Prefer lifecycle-managed work:
+
+```lua
+function Inventory:Start()
+	self.Clean:Add(Players.PlayerAdded:Connect(function(player)
+		self:LoadPlayer(player)
+	end))
+end
+```
+
+The second version makes startup and cleanup visible. Rivet can call `Start` at the right time and clean the connection when the runtime is destroyed.
+
+## Typing Unit Contexts
+
+Rivet exposes public types under `Rivet.Types`. In examples from this repository, Units use:
+
+```lua
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Types = require(ReplicatedStorage.Rivet.Types)
+
+type UnitContext = Types.UnitContext
+```
+
+In a Wally project, the require path usually goes through `ReplicatedStorage.Packages.Rivet.Types`.
+
+```lua
+local Types = require(ReplicatedStorage.Packages.Rivet.Types)
+```
+
+Then annotate functions if you want stricter editor feedback:
+
+```lua
+function Inventory.Init(self: UnitContext)
+	self.Data = self:Get("Data")
+end
+```
+
+You can also define a richer local type for Unit-specific fields:
+
+```lua
+type InventoryUnit = Types.UnitContext & {
+	Data: Types.UnitContext,
+	ItemsByPlayer: { [Player]: { string } },
+}
+
+function Inventory.Init(self: InventoryUnit)
+	self.Data = self:Get("Data")
+	self.ItemsByPlayer = {}
+end
+```
+
+:::info[Use typing where it helps, not where it fights you]
+Rivet's runtime is dynamic because Units are normal tables loaded from ModuleScripts. Use Luau types to document important fields and method signatures, but do not feel forced to model every dynamic surface proxy perfectly on the first pass.
+:::
+
+## Unit Validation
+
+Rivet validates Unit shape during startup. The module must require successfully, return a table, use a valid id, declare valid dependencies, and expose valid surfaces. Query and Action surfaces must point at real methods. Duplicate Unit ids and duplicate surface names are rejected.
+
+This validation is intentionally early. If the public shape is wrong, the server should fail startup with a useful message instead of producing half-created remotes and delayed runtime errors.
+
+Next: [Dependencies](./dependencies).

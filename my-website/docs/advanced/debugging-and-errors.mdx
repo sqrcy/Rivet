@@ -1,0 +1,301 @@
+---
+title: Debugging And Errors
+description: Read Rivet startup, dependency, surface, contract, codec, cleanup, plugin, and networking errors.
+---
+
+# Debugging And Errors
+
+Rivet tries to fail early and attach useful context to errors. Most errors include the action Rivet was taking, the Unit id, the surface name when relevant, and the expected shape.
+
+The fastest debugging path is:
+
+1. Find the Unit id in the error.
+2. Open that Unit.
+3. Check `Id`, `Dependencies`, `Surfaces`, contracts, codecs, and lifecycle methods.
+4. Reproduce with the smallest root or test fixture you can.
+
+## Startup Errors
+
+### Invalid Config
+
+If `Rivet.Start` receives the wrong config shape:
+
+```text
+Rivet.Start expects a config table
+Rivet.Start requires config.Roots to be an array of Instances
+Rivet.Start config.Roots[1] must be an Instance
+```
+
+Fix the boot script:
+
+```lua
+Rivet.Start({
+	Roots = {
+		ReplicatedStorage.Units,
+	},
+})
+```
+
+### Require Failure
+
+If a Unit throws while being required:
+
+```text
+Rivet failed to require unit "ReplicatedStorage.Units.Broken": ...
+```
+
+Open that ModuleScript and inspect top-level code. A common cause is doing runtime work at require time instead of inside `Init` or `Start`.
+
+### Unit Did Not Return A Table
+
+```text
+Rivet unit "ReplicatedStorage.Units.Helper" must return a table
+```
+
+Either make it a real Unit table or move the helper outside the roots passed to `Rivet.Start`.
+
+## Dependency Errors
+
+Missing dependency:
+
+```text
+Rivet missing dependency. Unit "Inventory" depends on missing unit "Data". Add a Unit with Id "Data" under config.Roots or remove it from Dependencies.
+```
+
+Checklist:
+
+- Does the `Data` Unit exist?
+- Is it under a configured root?
+- Is its `Id` actually `"Data"`?
+- Did it fail while requiring?
+- Did you typo the dependency string?
+
+Circular dependency:
+
+```text
+Rivet circular dependency. Circular Rivet dependency detected: A -> B -> C -> A
+```
+
+Break the cycle by separating responsibilities. Do not hide the relationship in `Start`; that only moves the problem.
+
+## Surface Errors
+
+Unknown kind:
+
+```text
+Rivet invalid surface. Unit "Inventory" Client.StreamItems has unknown kind "Stream"
+```
+
+Supported Client kinds are `Query`, `Action`, and `Signal`.
+
+Missing method:
+
+```text
+Rivet invalid surface. Unit "Inventory" exposes Client.GetItems, but method "GetItems" does not exist
+```
+
+Add the method or remove the surface. Query and Action surfaces require methods. Signal surfaces do not.
+
+Duplicate name:
+
+```text
+Rivet invalid surface. Unit "Inventory" exposes duplicate surface name "CanStack" in Client and Shared
+```
+
+Use one public surface name in one scope.
+
+Invalid contract field:
+
+```text
+Rivet invalid surface. Unit "Inventory" Client.EquipItem Action can only define Args
+```
+
+Check the allowed fields:
+
+- Query: `Args`, `Returns`
+- Action: `Args`
+- Signal: `Payload`
+
+## Contract Errors
+
+Argument type mismatch:
+
+```text
+Rivet contract failed: ContractInventory.EquipItem arg #1 expected string, got number (server)
+```
+
+Return mismatch:
+
+```text
+Rivet contract failed: BadReturnContract.GetCount return expected number, got string (server)
+```
+
+Payload mismatch:
+
+```text
+Rivet contract failed: ContractInventory.ItemAdded payload #2 expected number, got string (server)
+```
+
+Tuple count mismatch:
+
+```text
+Rivet contract failed: Inventory.EquipItem arg count expected 2, got 1 (server)
+```
+
+These are usually fixed by changing the caller, changing the surface contract, or changing the method's return value.
+
+:::tip[Read contract errors left to right]
+`Unit.Surface` tells you where to look. `arg`, `return`, or `payload` tells you which surface field is involved. The index tells you which tuple value failed.
+:::
+
+## Codec Errors
+
+Missing codec:
+
+```text
+Rivet missing codec. Unit "Inventory" surface "GetItem" uses unsupported type "Item"; register a codec with Rivet.Codec:Register("Item", codec).
+```
+
+Fix by registering the codec before startup on the side that validates that surface.
+
+Encode failure:
+
+```text
+Rivet codec encode failed at Inventory.GetItem return (server): unsupported function value
+```
+
+Fix the codec's `Encode` result so it contains only remote-safe data.
+
+Decode failure:
+
+```text
+Rivet codec decode failed at Inventory.UseItem arg #1 (server): decode exploded
+```
+
+Fix the codec's `Decode` function or the encoded data shape it expects.
+
+## Clean Errors
+
+Invalid task:
+
+```text
+Rivet Clean:Add cannot add nil
+```
+
+Unsupported table:
+
+```text
+Rivet Clean table task must define Destroy, Disconnect, or Cleanup
+```
+
+Missing explicit method:
+
+```text
+Rivet Clean task does not have method "Close"
+```
+
+Cleanup failure:
+
+```text
+Rivet Clean cleanup failed: ...
+```
+
+Add cleanup tasks close to where resources are created. If a resource has a custom cleanup method, pass the method name explicitly:
+
+```lua
+self.Clean:Add(resource, "Close")
+```
+
+## Plugin Errors
+
+Invalid registration:
+
+```text
+Rivet.Use expects a plugin table
+Rivet plugin Id must be a non-empty string
+Rivet duplicate plugin id "LogPlugin"
+Rivet plugins must be registered before Rivet.Start()
+```
+
+Hook failure:
+
+```text
+Rivet plugin "FailingPlugin" OnUnitLoaded failed: hook exploded
+```
+
+Open the plugin and inspect the hook named in the error.
+
+## Network Debug Stats
+
+Enable network debug counters:
+
+```lua
+Rivet.Start({
+	Roots = {
+		ReplicatedStorage.Units,
+	},
+	Debug = {
+		Network = true,
+	},
+})
+```
+
+Read a snapshot:
+
+```lua
+local stats = Rivet.Debug:GetNetworkStats()
+```
+
+Example:
+
+```lua
+{
+	Inventory = {
+		EquipItem = {
+			Kind = "Action",
+			Calls = 2,
+			Failures = 1,
+		},
+		GetItems = {
+			Kind = "Query",
+			Calls = 1,
+			Failures = 0,
+		},
+	},
+}
+```
+
+When debug is disabled, `GetNetworkStats()` returns an empty snapshot.
+
+## Debugging Remote Proxies
+
+If `Rivet:Get("Inventory")` fails on the client:
+
+- verify the server started
+- verify `ReplicatedStorage.RivetRemotes` exists
+- verify `RivetRemotes.Inventory` exists
+- verify remotes exist for each Client surface
+- verify client startup waits until remotes exist
+- verify the Unit id matches the remote folder name
+
+If a method is missing on the proxy:
+
+- check the surface declaration
+- ensure the server created the remote
+- confirm the surface kind metadata exists
+- check whether the surface is Shared instead of Client
+
+## A Practical Debug Loop
+
+Use this loop when a new Unit fails:
+
+1. Start with only the smallest root that contains the failing Unit and its direct dependencies.
+2. Comment out Client surfaces until the Unit loads.
+3. Add surfaces back one at a time.
+4. Add contracts after the surface works.
+5. Add codecs last.
+6. Turn on `Debug.Network` when calls reach the server but fail at runtime.
+
+This narrows the issue to load shape, dependency graph, surface shape, contract validation, or codec transformation.
+
+Next: [Runtime Architecture](./runtime-architecture).

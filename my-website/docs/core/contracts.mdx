@@ -1,0 +1,238 @@
+---
+title: Contracts
+description: Add runtime validation to Query args and returns, Action args, and Signal payloads.
+---
+
+# Contracts
+
+Contracts are optional runtime checks for network surfaces. Luau types help while you write code. Contracts help while the game runs, especially at remote boundaries where values arrive from another machine.
+
+```lua
+Inventory.Surfaces = {
+	Client = {
+		EquipItem = {
+			Kind = "Action",
+			Args = { "string" },
+		},
+	},
+}
+```
+
+With that contract, `Inventory:EquipItem(123)` fails before your server method runs because the first argument should be a string.
+
+:::info[Contracts are runtime guardrails]
+Contracts do not replace server authorization or business rules. They catch wrong value types and tuple counts at the Rivet surface boundary.
+:::
+
+## Contract Fields
+
+Rivet supports three contract fields. `Args` describes the values a client passes into a `Query` or `Action`. `Returns` describes the single value a `Query` sends back. `Payload` describes the values the server sends through a `Signal`.
+
+That split is intentional. Client calls and server-pushed events fail in different places, so their contracts should read differently too.
+
+## Args
+
+`Args` validates values passed from client to server.
+
+```lua
+Inventory.Surfaces = {
+	Client = {
+		GetItems = {
+			Kind = "Query",
+			Args = { "string" },
+			Returns = "table",
+		},
+		EquipItem = {
+			Kind = "Action",
+			Args = { "string" },
+		},
+	},
+}
+```
+
+Server methods still receive `player` first, but the `player` is not part of `Args`. Contracts describe values the client passes.
+
+```lua
+function Inventory:GetItems(player: Player, category: string)
+	return {}
+end
+
+function Inventory:EquipItem(player: Player, itemId: string)
+end
+```
+
+Client calls:
+
+```lua
+Inventory:GetItems("Weapons")
+Inventory:EquipItem("Sword")
+```
+
+`Args = { "string" }` checks `"Weapons"` or `"Sword"`, not the injected `player`.
+
+## Returns
+
+`Returns` validates the single value returned from a Query.
+
+```lua
+GetItems = {
+	Kind = "Query",
+	Returns = "table",
+}
+```
+
+If the server method returns `"not a table"`, Rivet errors:
+
+```text
+Rivet contract failed: Inventory.GetItems return expected table, got string (server)
+```
+
+Rivet's current Query contract models one returned value. If you need multiple values, return a table that names or orders them clearly.
+
+```lua
+function Inventory:GetSummary(player: Player)
+	return {
+		Items = self:GetItems(player),
+		Coins = self.Data:GetProfile(player).Coins,
+	}
+end
+```
+
+## Payload
+
+`Payload` validates values fired through a Signal.
+
+```lua
+ItemAdded = {
+	Kind = "Signal",
+	Payload = { "string", "number" },
+}
+```
+
+Server fire:
+
+```lua
+self.Client.ItemAdded:Fire(player, "Sword", 1)
+```
+
+If the second value is a string instead of a number, Rivet errors before firing the remote:
+
+```text
+Rivet contract failed: Inventory.ItemAdded payload #2 expected number, got string (server)
+```
+
+## Built-In Contract Names
+
+Rivet includes the primitive contracts you would expect for Roblox code: `nil`, `boolean`, `number`, `string`, `table`, `Instance`, `Player`, `Vector3`, `CFrame`, `Color3`, `EnumItem`, `buffer`, and `any`.
+
+Most of those map directly to `typeof(value)`. `Player` is a little stricter: the value must be an Instance that `IsA("Player")`. `any` means the value is intentionally unconstrained.
+
+Unknown non-primitive names are treated as custom codec names. For example, `"Item"` is valid only if you register `Rivet.Codec:Register("Item", codec)` before networking uses that surface.
+
+## Tuple Count Matters
+
+Tuple contracts validate count and type.
+
+```lua
+EquipItem = {
+	Kind = "Action",
+	Args = { "string", "number" },
+}
+```
+
+Valid:
+
+```lua
+Inventory:EquipItem("Sword", 1)
+```
+
+Invalid count:
+
+```lua
+Inventory:EquipItem("Sword")
+```
+
+Error shape:
+
+```text
+Rivet contract failed: Inventory.EquipItem arg count expected 2, got 1 (server)
+```
+
+## Contract Arrays Cannot Have Holes
+
+Contracts must be dense arrays.
+
+```lua
+Args = {
+	[1] = "string",
+	[3] = "number",
+}
+```
+
+That is rejected because index 2 is missing. Dense arrays keep tuple validation deterministic and make error messages line up with the values callers pass.
+
+## Start Small
+
+You do not need to contract every surface immediately. Start with the places where a bad value would waste the most debugging time: Actions that accept client input, Queries that return structured data, and Signals consumed by UI or multiple scripts.
+
+Use `any` when a value really is open-ended, not because the contract is annoying to write. When a table starts carrying actual domain meaning, such as an item, quest, loadout slot, or profile summary, that is usually the point where a codec becomes cleaner than passing a loose table around.
+
+```lua
+Shop.Surfaces = {
+	Client = {
+		BuyItem = {
+			Kind = "Action",
+			Args = { "string" },
+		},
+		GetCatalog = {
+			Kind = "Query",
+			Returns = "table",
+		},
+		PurchaseFailed = {
+			Kind = "Signal",
+			Payload = { "string" },
+		},
+	},
+}
+```
+
+## Contracts And Codecs
+
+Primitive contracts validate values in place. Custom contracts transform values with codecs.
+
+```lua
+Rivet.Codec:Register("Item", {
+	Encode = function(item)
+		return {
+			Id = item.Id,
+			Count = item.Count,
+		}
+	end,
+	Decode = function(data)
+		return Item.new(data.Id, data.Count)
+	end,
+})
+
+Inventory.Surfaces = {
+	Client = {
+		GetItem = {
+			Kind = "Query",
+			Returns = "Item",
+		},
+	},
+}
+```
+
+Rivet validates that custom contract names have registered codecs before networking starts. If a surface uses `"GhostItem"` and no codec exists, startup fails with a missing codec error.
+
+## Error Reading
+
+Contract errors include the Unit, surface, tuple label, index, expected type, actual type, and side.
+
+```text
+Rivet contract failed: ContractInventory.EquipItem arg #1 expected string, got number (server)
+```
+
+Read that as: the `ContractInventory` Unit received a call to the `EquipItem` surface, the first client argument was expected to be a `string`, but the server received a `number`. That points you directly to the surface declaration and the caller.
+
+Next: [Codecs](../advanced/codecs).

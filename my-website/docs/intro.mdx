@@ -1,0 +1,196 @@
+---
+title: Rivet Documentation
+description: Learn how to build Roblox systems with Rivet Units, managed lifecycle, explicit surfaces, contracts, codecs, plugins, cleanup, and benchmarks.
+slug: /intro
+---
+
+# Rivet Documentation
+
+Rivet is the top-level systems layer for a Roblox/Luau game. It is where you put the managed ModuleScripts that need a real lifecycle, startup order, cleanup, and networking. Think inventory, data, economy, rounds, matchmaking, quests, notifications, and other game systems that should start once and be available everywhere.
+
+Rivet is not meant to be every file in your codebase. It is not a replacement for ServerScripts or LocalScripts either. Those scripts boot Rivet or call into it. Your actual managed code lives in **Units**, which are ordinary ModuleScripts returning tables. The rest of your project can still have normal standalone modules: item classes, components, constructors, config tables, pure helpers, domain objects, UI helpers, and utility modules. Units are the managers that coordinate those pieces.
+
+The goal is not to replace Luau with a builder API or force everything into a custom class hierarchy. Rivet adds structure around the top-level systems you were probably already writing. You define those systems in plain Luau, tell Rivet which ModuleScripts are managed, tell it which systems depend on each other, and declare which methods are allowed to cross the client/server boundary.
+
+:::info[What Rivet gives you]
+Rivet gives you dependency-sorted boot, an `Init`/`Start`/`Destroy` lifecycle, a cleanup helper on every Unit, runtime lookup through `Rivet:Get("UnitId")`, declarative `Query`/`Action`/`Signal` networking, optional contracts at remote boundaries, custom codecs for domain objects, plugin hooks, network debug counters, and benchmark coverage.
+:::
+
+## The Mental Model
+
+The simplest way to understand Rivet is to separate **definition** from **activation**. Requiring a Unit should define a table. Starting Rivet should activate that table.
+
+That distinction matters because Roblox ModuleScripts are easy to turn into hidden startup machines. If requiring `Inventory` also connects events, creates remotes, and starts loops, the boot order lives in require side effects. Rivet moves that order into explicit metadata.
+
+```lua
+--!strict
+
+local Inventory = {}
+
+Inventory.Id = "Inventory"
+Inventory.Dependencies = { "Data" }
+
+function Inventory:Init()
+	self.Data = self:Get("Data")
+	self.ItemsByPlayer = {}
+end
+
+function Inventory:Start()
+	print("Inventory is ready")
+end
+
+return Inventory
+```
+
+That Unit is still normal Luau. `Id` gives it a stable public name. `Dependencies` says which managed systems must exist first. `Init` stores dependency references and internal state. `Start` begins work after every Unit has initialized. `self:Get("Data")` is available because Rivet attaches runtime helpers before lifecycle methods run.
+
+## Why Units Exist
+
+Roblox projects often begin with loose ModuleScripts. That works while the project is small, but over time the top-level systems need more structure. You want to know what starts first, what depends on what, where remotes are created, what is public to the client, and how everything shuts down cleanly.
+
+Rivet answers those questions with declarations close to the code that owns the behavior. A Unit that needs `Data` says so. A Unit that exposes `GetItems` to the client declares that as a `Query`. A Unit that returns an `Item` object declares an `Item` codec. The declarations are small, but they make the behavior visible when you read the Unit.
+
+## What To Read First
+
+If this is your first pass through the docs, start with installation, then build the first Unit, then wire server and client boot. After that, read the Core Concepts section in order. The advanced pages are there when you need custom object codecs, plugins, or deeper debugging.
+
+The [Benchmarks](./benchmarks) page is just a results page. The [Full API Reference](./api-reference) is for lookup once you already know the shape of the framework.
+
+:::tip[Read the examples beside the docs]
+The repository includes examples under `examples/` for basic startup, dependencies, networking, contracts, codecs, cleanup, and plugins. The docs explain the design and the examples show the smallest runnable shape.
+:::
+
+## A Complete Small Example
+
+This is a realistic starting point. A server script boots Rivet. `Data` and `Inventory` are managed ModuleScripts. `Inventory` depends on `Data` and exposes a client `Query` and `Action`.
+
+```text
+ReplicatedStorage
+  Packages
+    Rivet
+  Units
+    Data
+    Inventory
+ServerScriptService
+  Boot.server.lua
+```
+
+```lua title="Server boot"
+--!strict
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Rivet = require(ReplicatedStorage.Packages.Rivet)
+
+Rivet.Start({
+	Roots = {
+		ReplicatedStorage.Units,
+	},
+})
+```
+
+```lua title="Managed Unit"
+--!strict
+
+local Data = {}
+
+Data.Id = "Data"
+
+function Data:Init()
+	self.Profiles = {}
+end
+
+function Data:GetProfile(player: Player)
+	local profile = self.Profiles[player]
+
+	if profile == nil then
+		profile = {
+			Items = {},
+		}
+		self.Profiles[player] = profile
+	end
+
+	return profile
+end
+
+function Data:Destroy()
+	table.clear(self.Profiles)
+end
+
+return Data
+```
+
+```lua title="Managed Unit"
+--!strict
+
+local Inventory = {}
+
+Inventory.Id = "Inventory"
+Inventory.Dependencies = { "Data" }
+
+Inventory.Surfaces = {
+	Client = {
+		GetItems = {
+			Kind = "Query",
+			Returns = "table",
+		},
+		EquipItem = {
+			Kind = "Action",
+			Args = { "string" },
+		},
+	},
+}
+
+function Inventory:Init()
+	self.Data = self:Get("Data")
+end
+
+function Inventory:GetItems(player: Player)
+	return self.Data:GetProfile(player).Items
+end
+
+function Inventory:EquipItem(player: Player, itemId: string)
+	print(player.Name, "equipped", itemId)
+end
+
+return Inventory
+```
+
+On the client, Rivet returns a proxy for declared client surfaces:
+
+```lua title="Client boot"
+--!strict
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Rivet = require(ReplicatedStorage.Packages.Rivet)
+
+Rivet.Start({
+	Roots = {},
+})
+
+local Inventory = Rivet:Get("Inventory")
+local items = Inventory:GetItems()
+
+Inventory:EquipItem(items[1] or "StarterSword")
+```
+
+:::warning[Client startup depends on server remotes]
+Client proxies are created from `ReplicatedStorage.RivetRemotes`. In a real game, start the server runtime first and start the client after the remotes exist. The server owns Unit implementations; the client sees declared network proxies.
+:::
+
+## What Should Be A Unit
+
+Use Units for systems with a lifetime: inventory, data, economy, rounds, matchmaking, notifications, combat state, and tutorial flow are good examples.
+
+Do not make every file a Unit. Item classes, ability components, UI helpers, constructors, pure functions, constants, static config, and value objects should usually stay as normal ModuleScripts. Units can require and use those modules. Rivet manages the top-level systems, not every component those systems are built from.
+
+Keep top-level Unit code boring. The top level should create the table, assign metadata, maybe require static helpers, and define functions. Put runtime work in `Init` or `Start`. That habit prevents require order from becoming a second hidden lifecycle.
+
+Declare network access deliberately. If a client can call a method, put it in `Surfaces.Client`. If a method is only a server helper, leave it out. Rivet only creates remotes for declared Client surfaces, so the surface table is the public networking contract for the Unit.
+
+Add contracts at boundaries that matter. You do not have to contract every private helper. Start with surfaces that accept player input, return structured data, or carry custom values. Contracts catch runtime mistakes at the remote edge, where bad data is most expensive to debug.
+
+Use codecs when values have domain meaning. A plain table of strings may not need a codec. An `Item` object, loadout entry, profile snapshot, or typed record that should be rebuilt on the other side usually does.
+
+## Where To Go Next
+
+Start with [Installation](./getting-started/installation), then build [Your First Unit](./getting-started/first-unit).
