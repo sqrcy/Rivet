@@ -1,20 +1,27 @@
 Packages/
 DevPackages/
 TestPackages/
+
+# Local machine and secret material
+.DS_Store
 .env
 .env.local
+.env.example
+
+# Generated artifacts
 sourcemap.json
 tmp/
 *.rbxl
 *.rbxlx
 __pycache__/
+
+# Local-only development fixtures and tool config
 benchmarks/
-dev-types
-.env.example
+dev-types/
 *.luaurc
-benchmark-engine.project.json
+*.project.json
+aftman.toml
 selene.toml
-sourcemap.json
 stylua.toml
-test.project.json
 testez.yml
+wally.lock
