@@ -1,12 +1,6 @@
 {
 	"name": "Rivet",
 	"tree": {
-		"$className": "DataModel",
-		"ReplicatedStorage": {
-			"$className": "ReplicatedStorage",
-			"Rivet": {
-				"$path": "src/Rivet"
-			}
-		}
+		"$path": "src/Rivet"
 	}
 }

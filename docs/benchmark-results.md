@@ -73,18 +73,6 @@ For live Studio remote results, compare P50, P95, P99, and drops together. Remot
 
 ## Live Studio Remote Benchmarks
 
-Environment:
-
-- Roblox Studio version: not captured
-- OS: not captured
-- CPU: not captured
-- Client count: 1
-- Iterations: 500
-- Warmup iterations: 0
-- Payload: 0, 128, 1024, and 8192 bytes
-- Runner: Rojo-served Studio play session
-- Timeout: 5 seconds
-
 | Benchmark | Payload bytes | Mean ms | Median ms | P95 ms | P99 ms | Min ms | Max ms | Drops | Notes |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
 | Native RemoteFunction | 0 | 53.57 | 49.99 | 53.65 | 166.42 | 32.89 | 419.49 | 0 | Native request/response baseline. |
@@ -107,5 +95,37 @@ Environment:
 | Native RemoteEvent echo | 8192 | 49.61 | 49.53 | 51.36 | 66.22 | 32.07 | 84.52 | 0 | Native RemoteEvent client-to-server-to-client echo. |
 | Rivet Action echo | 8192 | 49.40 | 49.56 | 51.20 | 66.05 | 31.05 | 66.73 | 0 | Rivet Action request echoed through a Rivet Signal. |
 | Rivet Signal fanout | 8192 | 49.56 | 49.66 | 51.21 | 51.71 | 32.30 | 66.40 | 0 | Rivet server FireAll signal delivery to the benchmark client. |
+
+## Live Roblox Remote Benchmarks
+
+Environment:
+
+- Roblox client/server: live Roblox session
+- Client count: 1
+- Iterations: 500
+- Warmup iterations: 0
+- Payload: 0, 128, and 1024 bytes captured; 8192 bytes partially captured
+- Runner: live Roblox output capture
+- Timeout: 5 seconds
+- Notes: only the Native RemoteFunction 8192-byte row was fully visible in the screenshots.
+
+| Benchmark | Payload bytes | Mean ms | Median ms | P95 ms | P99 ms | Min ms | Max ms | Drops | Notes |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| Native RemoteFunction | 0 | 63.73 | 50.54 | 135.07 | 185.76 | 27.58 | 331.60 | 0 | Native request/response baseline. |
+| Rivet Query | 0 | 67.63 | 58.04 | 140.51 | 223.51 | 24.42 | 267.84 | 0 | Rivet Query proxy over RemoteFunction. |
+| Native RemoteEvent echo | 0 | 59.19 | 49.34 | 127.03 | 175.52 | 23.46 | 302.19 | 0 | Native RemoteEvent client-to-server-to-client echo. |
+| Rivet Action echo | 0 | 67.91 | 51.20 | 138.41 | 216.91 | 30.76 | 541.65 | 0 | Rivet Action request echoed through a Rivet Signal. |
+| Rivet Signal fanout | 0 | 60.96 | 49.55 | 133.41 | 164.03 | 24.56 | 215.25 | 0 | Rivet server FireAll signal delivery to the benchmark client. |
+| Native RemoteFunction | 128 | 60.87 | 50.09 | 132.09 | 167.14 | 26.94 | 209.64 | 0 | Native request/response baseline. |
+| Rivet Query | 128 | 59.13 | 49.69 | 130.10 | 175.36 | 24.68 | 222.19 | 0 | Rivet Query proxy over RemoteFunction. |
+| Native RemoteEvent echo | 128 | 63.49 | 49.75 | 133.63 | 213.44 | 24.82 | 294.41 | 0 | Native RemoteEvent client-to-server-to-client echo. |
+| Rivet Action echo | 128 | 74.68 | 49.43 | 239.80 | 376.35 | 24.00 | 508.98 | 0 | Rivet Action request echoed through a Rivet Signal. |
+| Rivet Signal fanout | 128 | 61.96 | 46.71 | 133.20 | 242.14 | 20.96 | 357.67 | 0 | Rivet server FireAll signal delivery to the benchmark client. |
+| Native RemoteFunction | 1024 | 67.47 | 49.89 | 133.37 | 188.92 | 23.79 | 234.14 | 0 | Native request/response baseline. |
+| Rivet Query | 1024 | 70.38 | 51.50 | 135.83 | 211.20 | 27.13 | 226.14 | 0 | Rivet Query proxy over RemoteFunction. |
+| Native RemoteEvent echo | 1024 | 67.68 | 49.45 | 136.68 | 196.22 | 25.18 | 296.07 | 0 | Native RemoteEvent client-to-server-to-client echo. |
+| Rivet Action echo | 1024 | 71.65 | 50.45 | 139.45 | 208.37 | 27.98 | 504.15 | 0 | Rivet Action request echoed through a Rivet Signal. |
+| Rivet Signal fanout | 1024 | 70.86 | 52.12 | 138.75 | 168.01 | 23.20 | 329.38 | 0 | Rivet server FireAll signal delivery to the benchmark client. |
+| Native RemoteFunction | 8192 | 77.96 | 57.56 | 147.46 | 194.04 | 28.09 | 227.56 | 0 | Native request/response baseline. |
 
 Previous: [Benchmarks](benchmarks.md)
