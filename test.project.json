@@ -1,0 +1,18 @@
+{
+	"name": "RivetTests",
+	"tree": {
+		"$className": "DataModel",
+		"ReplicatedStorage": {
+			"$className": "ReplicatedStorage",
+			"Rivet": {
+				"$path": "src/Rivet"
+			},
+			"Tests": {
+				"$path": "tests"
+			},
+			"DevPackages": {
+				"$path": "DevPackages"
+			}
+		}
+	}
+}

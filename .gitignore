@@ -1,0 +1,8 @@
+Packages/
+DevPackages/
+.env
+.env.local
+sourcemap.json
+tmp/
+*.rbxl
+*.rbxlx
