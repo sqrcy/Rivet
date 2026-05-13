@@ -8,7 +8,7 @@ surfaces, networking, contracts, codecs, and plugins around them.
 
 ```toml
 [dependencies]
-Rivet = "sqrcy/rivet@1.0.0"
+Rivet = "sqrcy/rivet@1.0.1"
 ```
 
 ## Feature Highlights
