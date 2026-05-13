@@ -8,10 +8,10 @@ tmp/
 *.rbxl
 *.rbxlx
 __pycache__/
-benchmarks
+benchmarks/
 dev-types
 .env.example
-.luaurc
+*.luaurc
 benchmark-engine.project.json
 selene.toml
 sourcemap.json
