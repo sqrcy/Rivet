@@ -1,169 +1,35 @@
 # Rivet
 
-Rivet is an all-in-one Roblox/Luau framework package by `@sqrcy`. It lets you
-write ordinary ModuleScripts, then adds startup order, cleanup, explicit public
-surfaces, networking, contracts, codecs, and plugins around them.
+Rivet is a Roblox/Luau systems layer for games that have outgrown loose startup scripts and scattered remotes. It gives top-level game systems a managed lifecycle, predictable dependency order, explicit networking surfaces, cleanup, validation, and extension hooks while keeping the code itself plain Luau.
 
-## Install
+Use Rivet for the systems that should feel like real runtime services: inventory, data, economy, rounds, matchmaking, quests, notifications, combat state, and other modules that need to start, talk to each other, expose safe client APIs, and shut down cleanly.
 
-```toml
-[dependencies]
-Rivet = "sqrcy/rivet@1.0.1"
-```
+## Why Use Rivet
 
-## Feature Highlights
+### Managed Systems Without Ceremony
 
-### Ordinary Units With Managed Boot
+Units are ordinary ModuleScripts that return tables. Rivet adds the part Roblox projects usually end up rebuilding by hand: startup order, `Init`/`Start`/`Destroy`, dependency lookup, and reverse-order teardown.
 
-Rivet Units are just Lua tables returned from ModuleScripts. Add an `Id`,
-optional `Dependencies`, and lifecycle methods when you want Rivet to manage
-startup and shutdown.
+### Explicit Client APIs
 
-```lua
---!strict
+Client access is declared through surfaces. A Unit can expose a request/response `Query`, a one-way `Action`, or a server-pushed `Signal` without making every server method reachable from the client.
 
-local Inventory = {}
+### Safer Runtime Boundaries
 
-Inventory.Id = "Inventory"
-Inventory.Dependencies = { "Data" }
+Contracts validate values at remote boundaries, and codecs give custom domain objects an explicit encode/decode path. Bad traffic fails close to the surface that received it, which makes networking bugs easier to understand.
 
-function Inventory:Init()
-	self.Data = self:Get("Data")
-end
+### Cleanup Built In
 
-return Inventory
-```
+Every Unit gets a cleanup helper for functions, Instances, connections, and objects with cleanup-style methods. Runtime teardown becomes a normal part of the system instead of a pile of one-off disconnect calls.
 
-Rivet dependency-sorts Units, runs every `Init` before any `Start`, gives each
-Unit `self:Get(...)`, and destroys everything in reverse boot order. You get
-predictable startup without turning your code into a framework-specific builder
-API.
+### Hooks For Tooling And Diagnostics
 
-### Explicit Surfaces And Networking
+Plugins can observe lifecycle events, surface registration, network calls, and runtime errors. That makes it straightforward to add logging, metrics, policy checks, or project-specific diagnostics without copying that code into every Unit.
 
-Surfaces describe the methods a Unit chooses to expose. Query, Action, and
-Signal surfaces become predictable Roblox remotes without exposing the rest of
-the Unit.
+## Documentation
 
-```lua
-Inventory.Surfaces = {
-	Client = {
-		GetItems = "Query",
-		EquipItem = "Action",
-		ItemAdded = "Signal",
-	},
-}
-```
-
-Queries return values, Actions send one-way requests, and Signals let the server
-push events to clients. Rivet creates and organizes the underlying remotes at
-runtime, then client code uses normal `Rivet:Get("UnitId")` access.
-
-### Runtime Contracts And Codecs
-
-Contracts validate common runtime values, codecs move custom objects across
-network calls, and error messages point at the Unit and surface that failed.
-
-```lua
-Inventory.Surfaces = {
-	Client = {
-		EquipItem = {
-			Kind = "Action",
-			Args = { "string" },
-		},
-	},
-}
-```
-
-Codecs are explicit encoder/decoder pairs for custom objects. They let you move
-domain values like items, loadout entries, or profile snapshots through surfaced
-network calls without guessing from table shape.
-
-### Built-In Cleanup
-
-Every Unit receives `self.Clean`, a small cleanup helper for functions,
-Instances, connections, and objects with `Destroy`, `Disconnect`, or `Cleanup`.
-
-```lua
-function Inventory:Start()
-	self.Clean:Add(Players.PlayerRemoving:Connect(function(player)
-		self.Items[player] = nil
-	end))
-end
-```
-
-Cleanup runs automatically during `Rivet.Destroy()`, after the Unit's own
-`Destroy` method.
-
-### Plugins For Runtime Hooks
-
-Plugins can observe and extend Rivet without changing every Unit. Use them for
-logging, diagnostics, metrics, or project-specific startup policy.
-
-```lua
-local LogPlugin = {}
-
-LogPlugin.Id = "LogPlugin"
-
-function LogPlugin:OnUnitStart(unit)
-	print("Started", unit.Id)
-end
-
-Rivet.Use(LogPlugin)
-```
-
-### Highly Performant Runtime
-
-Rivet keeps the runtime path small and measurable. The current benchmark suite
-covers engine/headless framework overhead plus live Roblox remote behavior.
-
-Highlights from the current results:
-
-- Engine/headless Query dispatch: about `8.81 us/op`
-- Engine/headless string-contract Query dispatch: about `10.14 us/op`
-- Engine/headless small codec Query return: about `12.27 us/op`
-- Live Roblox Rivet Query, 1024-byte payload: about `70.38 ms` mean with `0` drops
-- Live Roblox Rivet Action echo, 1024-byte payload: about `71.65 ms` mean with `0` drops
-
-See [Benchmark Results](docs/benchmark-results.md) for the full tables,
-percentiles, payload sizes, and notes.
-
-## Why Adopt Rivet
-
-Rivet is for Roblox projects that have outgrown loose ModuleScripts but do not
-want to give up ordinary Luau.
-
-Use Rivet when you want:
-
-- startup order that is visible in code
-- one place to manage lifecycle and cleanup
-- networking that only exposes declared surfaces
-- optional runtime validation at remote boundaries
-- explicit custom-object serialization through codecs
-- plugin hooks for project-wide diagnostics
-- a package that has no external runtime dependencies
-
-The practical benefit is consistency. Units look like normal modules, remotes
-are declared beside the methods they expose, dependencies are sorted before boot,
-and cleanup has a single predictable path. That makes the codebase easier to
-read, easier to test, and easier to grow.
-
-## Package
-
-Rivet is a Wally package named `sqrcy/rivet`. The plain package contains the
-runtime source, package metadata, project mapping, changelog, readme, and
-BSD-3-Clause license. Tests, examples, scripts, docs, and local tooling files are
-excluded from the published package.
+[Documentation]()
 
 ## License
 
 Rivet is licensed under BSD-3-Clause.
-
-## Documentation
-
-Start with [Docs Index](docs/index.md), then use [API Reference](docs/api-reference.md)
-once you know the main ideas.
-
-Benchmarks are a separate reference path covering engine/headless overhead and
-live Studio remote behavior. Start with [Benchmarks](docs/benchmarks.md), then
-read the current [Benchmark Results](docs/benchmark-results.md).
