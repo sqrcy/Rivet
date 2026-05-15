@@ -28,7 +28,7 @@ Plugins can observe lifecycle events, surface registration, network calls, and r
 
 ## Documentation
 
-[Documentation]()
+[Documentation](https://sqrcy.github.io/Rivet/)
 
 ## License
 

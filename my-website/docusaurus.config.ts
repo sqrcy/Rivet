@@ -13,7 +13,7 @@ const config: Config = {
   },
 
   url: 'https://sqrcy.github.io',
-  baseUrl: '/rivet/',
+  baseUrl: '/Rivet/',
 
   organizationName: 'sqrcy',
   projectName: 'rivet',
