@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.2
+
+- Fixed unit discovery registering child ModuleScripts as units. Discovery now
+  stops at each unit, leaving its children and other descendants private.
+- Preserved discovery through grouping folders and support for ModuleScript roots.
+
 ## 1.0.0
 
 - Stabilized the public API: `Rivet.Start`, `Rivet.Get` / `Rivet:Get`,
