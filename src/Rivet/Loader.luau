@@ -203,12 +203,11 @@ end
 local function collectModuleScripts(root: Instance, output: { ModuleScript })
 	if root:IsA("ModuleScript") then
 		table.insert(output, root :: ModuleScript)
+		return
 	end
 
-	for _, descendant in ipairs(root:GetDescendants()) do
-		if descendant:IsA("ModuleScript") then
-			table.insert(output, descendant :: ModuleScript)
-		end
+	for _, child in ipairs(root:GetChildren()) do
+		collectModuleScripts(child, output)
 	end
 end
 

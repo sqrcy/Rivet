@@ -46,6 +46,8 @@ that start once and stay available.
 
 If a ModuleScript is only a helper, keep it as a normal module and require it
 from a Unit. Rivet only manages ModuleScripts inside the roots you give it.
+Discovery stops at each Unit ModuleScript, so its children and other descendants
+remain private modules and are not registered as Units.
 
 ## Unit Ids
 
